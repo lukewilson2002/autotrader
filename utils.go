@@ -15,3 +15,11 @@ func Max[T constraints.Ordered](a, b T) T {
 	}
 	return b
 }
+
+func LeverageToMargin(leverage float64) float64 {
+	return 1 / leverage
+}
+
+func MarginToLeverage(margin float64) float64 {
+	return 1 / margin
+}

@@ -2,11 +2,17 @@ package autotrader
 
 import (
 	"errors"
+	"strconv"
+	"time"
 
 	df "github.com/rocketlaunchr/dataframe-go"
+	"golang.org/x/exp/rand"
 )
 
-var ErrNoData = errors.New("no data")
+var (
+	ErrEOF    = errors.New("end of the input data")
+	ErrNoData = errors.New("no data")
+)
 
 func Backtest(trader *Trader) {
 	trader.Tick()
@@ -17,11 +23,32 @@ type TestBroker struct {
 	Data         *df.DataFrame
 	Cash         float64
 	Leverage     float64
+	Spread       float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
 	StartCandles int
-	candles      int
+
+	candleCount int // The number of candles anyone outside this broker has seen. Also equal to the number of times Candles has been called.
+	orders      []Order
+	positions   []Position
 }
 
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*df.DataFrame, error) {
+	// Check if we reached the end of the existing data.
+	if b.Data != nil && b.candleCount >= b.Data.NRows() {
+		return b.Data.Copy(), ErrEOF
+	}
+
+	// Catch up to the start candles.
+	if b.candleCount < b.StartCandles {
+		b.candleCount = b.StartCandles
+	} else {
+		b.candleCount++
+	}
+	return b.candles(symbol, frequency, count)
+}
+
+// candles does the same as the public Candles except it doesn't increment b.candleCount so that it can be used
+// internally to fetch candles without incrementing the count.
+func (b *TestBroker) candles(symbol string, frequency string, count int) (*df.DataFrame, error) {
 	if b.DataBroker != nil && b.Data == nil {
 		// Fetch a lot of candles from the broker so we don't keep asking.
 		candles, err := b.DataBroker.Candles(symbol, frequency, Max(count, 1000))
@@ -33,37 +60,143 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*df.Da
 		return nil, ErrNoData
 	}
 
-	// Check if we reached the end of the existing data.
-	if b.candles >= b.Data.NRows() {
-		return nil, nil
-	}
+	// TODO: check if count > our rows if we are using a data broker and then fetch more data if so.
 
 	// Catch up to the start candles.
-	if b.candles < b.StartCandles {
-		b.candles = b.StartCandles
-	} else {
-		b.candles++
+	if b.candleCount < b.StartCandles {
+		b.candleCount = b.StartCandles
 	}
-	end := b.candles - 1
-	start := Max(b.candles-count, 0)
+
+	// We use a Max(b.candleCount, 1) because we want to return at least 1 candle (even if b.candleCount is 0),
+	// which may happen if we call this function before the first call to Candles.
+	end := Max(b.candleCount, 1) - 1
+	start := Max(Max(b.candleCount, 1)-count, 0)
 
 	return b.Data.Copy(df.Range{Start: &start, End: &end}), nil
 }
 
 func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {
-	return nil, nil
+	if b.Data == nil { // The dataBroker could have data but nobody has called Candles, yet.
+		if b.DataBroker == nil {
+			return nil, ErrNoData
+		}
+		_, err := b.candles("", "", 1) // Fetch 1 candle.
+		if err != nil {
+			return nil, err
+		}
+	}
+	closeIdx, err := b.Data.NameToColumn("Close")
+	if err != nil {
+		return nil, err
+	}
+	price := b.Data.Series[closeIdx].Value(Max(b.candleCount-1, 0)).(float64) // Get the last close price.
+
+	// Instantly fulfill the order.
+	b.Cash -= price * units * LeverageToMargin(b.Leverage)
+	position := &TestPosition{}
+
+	order := &TestOrder{
+		id:         strconv.Itoa(rand.Int()),
+		leverage:   b.Leverage,
+		position:   position,
+		price:      price,
+		symbol:     symbol,
+		stopLoss:   stopLoss,
+		takeProfit: takeProfit,
+		time:       time.Now(),
+		orderType:  MarketOrder,
+		units:      units,
+	}
+
+	b.orders = append(b.orders, order)
+	b.positions = append(b.positions, position)
+
+	return order, nil
 }
 
 func (b *TestBroker) NAV() float64 {
 	return b.Cash
 }
 
-func NewTestBroker(dataBroker Broker, data *df.DataFrame, cash, leverage float64, startCandles int) *TestBroker {
+func (b *TestBroker) Orders() []Order {
+	return b.orders
+}
+
+func (b *TestBroker) Positions() []Position {
+	return b.positions
+}
+
+func NewTestBroker(dataBroker Broker, data *df.DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
 	return &TestBroker{
 		DataBroker:   dataBroker,
 		Data:         data,
 		Cash:         cash,
 		Leverage:     Max(leverage, 1),
+		Spread:       spread,
 		StartCandles: Max(startCandles-1, 0),
 	}
+}
+
+type TestPosition struct {
+}
+
+type TestOrder struct {
+	id         string
+	leverage   float64
+	position   *TestPosition
+	price      float64
+	symbol     string
+	stopLoss   float64
+	takeProfit float64
+	time       time.Time
+	orderType  OrderType
+	units      float64
+}
+
+func (o *TestOrder) Cancel() error {
+	return ErrCancelFailed
+}
+
+func (o *TestOrder) Fulfilled() bool {
+	return o.position != nil
+}
+
+func (o *TestOrder) Id() string {
+	return o.id
+}
+
+func (o *TestOrder) Leverage() float64 {
+	return o.leverage
+}
+
+func (o *TestOrder) Position() Position {
+	return o.position
+}
+
+func (o *TestOrder) Price() float64 {
+	return o.price
+}
+
+func (o *TestOrder) Symbol() string {
+	return o.symbol
+}
+
+func (o *TestOrder) StopLoss() float64 {
+	return o.stopLoss
+}
+
+func (o *TestOrder) TakeProfit() float64 {
+	return o.takeProfit
+}
+
+func (o *TestOrder) Time() time.Time {
+	return o.time
+}
+
+func (o *TestOrder) Type() OrderType {
+	return o.orderType
+}
+
+func (o *TestOrder) Units() float64 {
+	return o.units
 }

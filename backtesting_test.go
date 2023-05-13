@@ -21,13 +21,14 @@ const testDataCSV = `date,open,high,low,close,volume
 
 func newTestingDataframe() *df.DataFrame {
 	data, err := ReadDataCSVFromReader(strings.NewReader(testDataCSV), DataCSVLayout{
-		DateFormat: "2006-01-02",
-		Date:       "date",
-		Open:       "open",
-		High:       "high",
-		Low:        "low",
-		Close:      "close",
-		Volume:     "volume",
+		LatestFirst: false,
+		DateFormat:  "2006-01-02",
+		Date:        "date",
+		Open:        "open",
+		High:        "high",
+		Low:         "low",
+		Close:       "close",
+		Volume:      "volume",
 	})
 	if err != nil {
 		panic(err)
@@ -37,7 +38,7 @@ func newTestingDataframe() *df.DataFrame {
 
 func TestBacktestingBrokerCandles(t *testing.T) {
 	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 0, 0, 0)
+	broker := NewTestBroker(nil, data, 0, 0, 0, 0)
 
 	candles, err := broker.Candles("EUR_USD", "D", 3)
 	if err != nil {
@@ -79,17 +80,17 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 }
 
 func TestBacktestingBrokerFunctions(t *testing.T) {
-	broker := NewTestBroker(nil, nil, 100000, 20, 0)
+	broker := NewTestBroker(nil, nil, 100_000, 20, 0, 0)
 
-	if broker.NAV() != 100000 {
-		t.Errorf("Expected NAV to be 100000, got %f", broker.NAV())
+	if broker.NAV() != 100_000 {
+		t.Errorf("Expected NAV to be 100_000, got %f", broker.NAV())
 	}
 }
 
 func TestBacktestingBrokerOrders(t *testing.T) {
-	broker := NewTestBroker(nil, newTestingDataframe(), 100000, 50, 0)
+	broker := NewTestBroker(nil, newTestingDataframe(), 100_000, 50, 0, 0)
 	timeBeforeOrder := time.Now()
-	order, err := broker.MarketOrder("EUR_USD", 1000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
+	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,11 +101,11 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 	if order.Symbol() != "EUR_USD" {
 		t.Errorf("Expected symbol to be EUR_USD, got %s", order.Symbol())
 	}
-	if order.Units() != 1000 {
-		t.Errorf("Expected units to be 1000, got %f", order.Units())
+	if order.Units() != 50_000 {
+		t.Errorf("Expected units to be 50_000, got %f", order.Units())
 	}
 	if order.Price() != 1.15 {
-		t.Errorf("Expected open price to be 1.15 (first close), got %f", order.Price())
+		t.Errorf("Expected order price to be 1.15 (first close), got %f", order.Price())
 	}
 	if order.Fulfilled() != true {
 		t.Error("Expected order to be fulfilled")

@@ -16,6 +16,7 @@ const (
 )
 
 var (
+	ErrCancelFailed      = errors.New("cancel failed")
 	ErrSymbolNotFound    = errors.New("symbol not found")
 	ErrInvalidStopLoss   = errors.New("invalid stop loss")
 	ErrInvalidTakeProfit = errors.New("invalid take profit")
@@ -26,7 +27,7 @@ type Order interface {
 	Fulfilled() bool     // Fulfilled returns true if the order has been filled with the broker and a position is active.
 	Id() string          // Id returns the unique identifier of the order by the broker.
 	Leverage() float64   // Leverage returns the leverage of the order.
-	Position() *Position // Position returns the position of the order. If the order has not been filled, nil is returned.
+	Position() Position  // Position returns the position of the order. If the order has not been filled, nil is returned.
 	Price() float64      // Price returns the price of the symbol at the time the order was placed.
 	Symbol() string      // Symbol returns the symbol name of the order.
 	StopLoss() float64   // StopLoss returns the stop loss price of the order.
@@ -44,4 +45,6 @@ type Broker interface {
 	Candles(symbol string, frequency string, count int) (*df.DataFrame, error)
 	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.
+	Orders() []Order
+	Positions() []Position
 }
