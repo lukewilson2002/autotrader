@@ -1,18 +1,63 @@
 package autotrader
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func newTestingDataFrame() *DataFrame {
+	_dataframe, err := ReadEURUSDDataCSV()
+	if err != nil {
+		return nil
+	}
+	return NewDataFrame(_dataframe)
+}
+
+func TestDataSeries(t *testing.T) {
+	data := newTestingDataFrame()
+	if data == nil {
+		t.Fatal("Could not create DataFrame")
+	}
+
+	dates, closes := data.Dates(), data.Closes()
+
+	if dates.Len() != 2610 {
+		t.Fatalf("Expected 2610 rows, got %d", dates.Len())
+	}
+	if closes.Len() != 2610 {
+		t.Fatalf("Expected 2610 rows, got %d", closes.Len())
+	}
+
+	sma10 := closes.Rolling(10).Mean()
+	if sma10.Len() != 2610 {
+		t.Fatalf("Expected 2610 rows, got %d", sma10.Len())
+	}
+	if sma10.Value(-1) != 1.10039 { // Latest closing price averaged over 10 periods.
+		t.Fatalf("Expected 1.10039, got %f", sma10.Value(-1))
+	}
+}
+
+func TestDataFrame(t *testing.T) {
+	data := newTestingDataFrame()
+	if data == nil {
+		t.Fatal("Could not create DataFrame")
+	}
+
+	if data.Len() != 2610 {
+		t.Fatalf("Expected 2610 rows, got %d", data.Len())
+	}
+	if data.Close(-1) != 1.0967 {
+		t.Fatalf("Expected 1.0967, got %f", data.Close(-1))
+	}
+
+	date := data.Date(2) // Get the 3rd earliest date from the Date column.
+	if date.Year() != 2013 || date.Month() != 5 || date.Day() != 13 {
+		t.Fatalf("Expected 2013-05-13, got %s", date.Format(time.DateOnly))
+	}
+}
 
 func TestReadDataCSV(t *testing.T) {
-	data, err := ReadDataCSV("./EUR_USD Historical Data.csv", DataCSVLayout{
-		LatestFirst: true,
-		DateFormat:  "01/02/2006",
-		Date:        "\ufeff\"Date\"",
-		Open:        "Open",
-		High:        "High",
-		Low:         "Low",
-		Close:       "Price",
-		Volume:      "Vol.",
-	})
+	data, err := ReadEURUSDDataCSV()
 	if err != nil {
 		t.Fatal(err)
 	}
