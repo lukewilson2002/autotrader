@@ -38,6 +38,17 @@ type Order interface {
 }
 
 type Position interface {
+	Close() error        // Close attempts to close the position and returns an error if it fails. If the error is nil, the position was closed.
+	Closed() bool        // Closed returns true if the position has been closed with the broker.
+	EntryPrice() float64 // EntryPrice returns the price of the symbol at the time the position was opened.
+	Id() string          // Id returns the unique identifier of the position by the broker.
+	Leverage() float64   // Leverage returns the leverage of the position.
+	PL() float64         // PL returns the profit or loss of the position.
+	Symbol() string      // Symbol returns the symbol name of the position.
+	StopLoss() float64   // StopLoss returns the stop loss price of the position.
+	TakeProfit() float64 // TakeProfit returns the take profit price of the position.
+	Time() time.Time     // Time returns the time the position was opened.
+	Units() float64      // Units returns the number of units purchased or sold by the position.
 }
 
 type Broker interface {
@@ -45,6 +56,10 @@ type Broker interface {
 	Candles(symbol string, frequency string, count int) (*df.DataFrame, error)
 	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.
+	// Orders returns a slice of orders that have been placed with the broker. If an order has been canceled or
+	// filled, it will not be returned.
 	Orders() []Order
+	// Positions returns a slice of positions that are currently open with the broker. If a position has been
+	// closed, it will not be returned.
 	Positions() []Position
 }

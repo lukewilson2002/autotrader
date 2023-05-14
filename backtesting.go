@@ -10,15 +10,26 @@ import (
 )
 
 var (
-	ErrEOF    = errors.New("end of the input data")
-	ErrNoData = errors.New("no data")
+	ErrEOF            = errors.New("end of the input data")
+	ErrNoData         = errors.New("no data")
+	ErrPositionClosed = errors.New("position closed")
 )
 
 func Backtest(trader *Trader) {
 	trader.Tick()
 }
 
+// TestBroker is a broker that can be used for testing. It implements the Broker interface and fulfills orders
+//
+// Signals:
+//   - Tick(nil) - Called when the broker ticks.
+//   - OrderPlaced(Order) - Called when an order is placed.
+//   - OrderFilled(Order) - Called when an order is filled.
+//   - OrderCanceled(Order) - Called when an order is canceled.
+//   - PositionClosed(Position) - Called when a position is closed.
+//   - PositionModified(Position) - Called when a position changes.
 type TestBroker struct {
+	SignalManager
 	DataBroker   Broker
 	Data         *df.DataFrame
 	Cash         float64
@@ -110,6 +121,7 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 
 	b.orders = append(b.orders, order)
 	b.positions = append(b.positions, position)
+	b.SignalEmit("OrderPlaced", order)
 
 	return order, nil
 }
@@ -138,6 +150,63 @@ func NewTestBroker(dataBroker Broker, data *df.DataFrame, cash, leverage, spread
 }
 
 type TestPosition struct {
+	closed     bool
+	entryPrice float64
+	id         string
+	leverage   float64
+	symbol     string
+	stopLoss   float64
+	takeProfit float64
+	time       time.Time
+	units      float64
+}
+
+func (p *TestPosition) Close() error {
+	if p.closed {
+		return ErrPositionClosed
+	}
+	p.closed = true
+	return nil
+}
+
+func (p *TestPosition) Closed() bool {
+	return p.closed
+}
+
+func (p *TestPosition) EntryPrice() float64 {
+	return p.entryPrice
+}
+
+func (p *TestPosition) Id() string {
+	return p.id
+}
+
+func (p *TestPosition) Leverage() float64 {
+	return p.leverage
+}
+
+func (p *TestPosition) PL() float64 {
+	return 0
+}
+
+func (p *TestPosition) Symbol() string {
+	return p.symbol
+}
+
+func (p *TestPosition) StopLoss() float64 {
+	return p.stopLoss
+}
+
+func (p *TestPosition) TakeProfit() float64 {
+	return p.takeProfit
+}
+
+func (p *TestPosition) Time() time.Time {
+	return p.time
+}
+
+func (p *TestPosition) Units() float64 {
+	return p.units
 }
 
 type TestOrder struct {

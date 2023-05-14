@@ -11,6 +11,179 @@ import (
 	df "github.com/rocketlaunchr/dataframe-go"
 )
 
+type Series interface {
+	Copy() Series
+	Len() int
+}
+
+type Frame interface {
+	Copy() Frame
+	Len() int
+
+	// Comparison functions.
+	Equal(other Frame) bool
+	NotEqual(other Frame) bool
+	Less(other Frame) bool
+	LessEqual(other Frame) bool
+	Greater(other Frame) bool
+	GreaterEqual(other Frame) bool
+
+	// Easy access functions.
+	Date(i int) time.Time
+	Open(i int) float64
+	High(i int) float64
+	Low(i int) float64
+	Close(i int) float64
+	Volume(i int) float64
+	Dates() Series
+	Opens() Series
+	Highs() Series
+	Lows() Series
+	Closes() Series
+	Volumes() Series
+
+	// Custom data columns
+	Value(column string, i int) interface{}
+	Float(column string, i int) float64
+	Int(column string, i int) int
+	String(column string, i int) string
+	// Time returns the value of the column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+	Time(column string, i int) time.Time
+}
+
+type DataFrame struct {
+	*df.DataFrame // DataFrame with a Date, Open, High, Low, Close, and Volume column.
+}
+
+func (o *DataFrame) Copy() *DataFrame {
+	return &DataFrame{o.DataFrame.Copy()}
+}
+
+func (o *DataFrame) Len() int {
+	if o.DataFrame == nil {
+		return 0
+	}
+	return o.NRows()
+}
+
+// Date returns the value of the Date column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Time("Date", i).
+func (o *DataFrame) Date(i int) time.Time {
+	return o.Time("Date", i)
+}
+
+// Open returns the open price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Float("Open", i).
+func (o *DataFrame) Open(i int) float64 {
+	return o.Float("Open", i)
+}
+
+// High returns the high price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Float("High", i).
+func (o *DataFrame) High(i int) float64 {
+	return o.Float("High", i)
+}
+
+// Low returns the low price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Float("Low", i).
+func (o *DataFrame) Low(i int) float64 {
+	return o.Float("Low", i)
+}
+
+// Close returns the close price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Float("Close", i).
+func (o *DataFrame) Close(i int) float64 {
+	return o.Float("Close", i)
+}
+
+// Volume returns the volume of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// This is the equivalent to calling Float("Volume", i).
+func (o *DataFrame) Volume(i int) float64 {
+	return o.Float("Volume", i)
+}
+
+// Value returns the value of the column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, nil is returned.
+func (o *DataFrame) Value(column string, i int) interface{} {
+	colIdx, err := o.DataFrame.NameToColumn(column)
+	if err != nil {
+		return nil
+	} else if o.DataFrame == nil || i >= o.Len() {
+		return 0
+	} else if i < 0 {
+		i = o.Len() - i
+		if i < 0 {
+			return 0
+		}
+		return o.Series[colIdx].Value(i)
+	}
+	return o.Series[colIdx].Value(i)
+}
+
+// Float returns the value of the column at index i casted to float64. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+func (o *DataFrame) Float(column string, i int) float64 {
+	val := o.Value(column, i)
+	if val == nil {
+		return 0
+	}
+	switch val.(type) {
+	case float64:
+		return val.(float64)
+	default:
+		return 0
+	}
+}
+
+// Int returns the value of the column at index i casted to int. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+func (o *DataFrame) Int(column string, i int) int {
+	val := o.Value(column, i)
+	if val == nil {
+		return 0
+	}
+	switch val.(type) {
+	case int:
+		return val.(int)
+	default:
+		return 0
+	}
+}
+
+// String returns the value of the column at index i casted to string. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, "" is returned.
+func (o *DataFrame) String(column string, i int) string {
+	val := o.Value(column, i)
+	if val == nil {
+		return ""
+	}
+	switch val.(type) {
+	case string:
+		return val.(string)
+	default:
+		return ""
+	}
+}
+
+// Time returns the value of the column at index i casted to time.Time. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, time.Time{} is returned.
+func (o *DataFrame) Time(column string, i int) time.Time {
+	val := o.Value(column, i)
+	if val == nil {
+		return time.Time{}
+	}
+	switch val.(type) {
+	case time.Time:
+		return val.(time.Time)
+	default:
+		return time.Time{}
+	}
+}
+
+func NewChartData(data *df.DataFrame) *DataFrame {
+	return &DataFrame{data}
+}
+
+type RollingWindow struct {
+	DataFrame
+	Period int
+}
+
 type DataCSVLayout struct {
 	LatestFirst bool   // Whether the latest data is first in the dataframe. If false, the latest data is last.
 	DateFormat  string // The format of the date column. Example: "03/22/2006". See https://pkg.go.dev/time#pkg-constants for more information.
