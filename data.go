@@ -125,9 +125,9 @@ func (o *DataFrame) Float(column string, i int) float64 {
 	if val == nil {
 		return 0
 	}
-	switch val.(type) {
+	switch val := val.(type) {
 	case float64:
-		return val.(float64)
+		return val
 	default:
 		return 0
 	}
@@ -139,9 +139,9 @@ func (o *DataFrame) Int(column string, i int) int {
 	if val == nil {
 		return 0
 	}
-	switch val.(type) {
+	switch val := val.(type) {
 	case int:
-		return val.(int)
+		return val
 	default:
 		return 0
 	}
@@ -153,9 +153,9 @@ func (o *DataFrame) String(column string, i int) string {
 	if val == nil {
 		return ""
 	}
-	switch val.(type) {
+	switch val := val.(type) {
 	case string:
-		return val.(string)
+		return val
 	default:
 		return ""
 	}
@@ -167,9 +167,9 @@ func (o *DataFrame) Time(column string, i int) time.Time {
 	if val == nil {
 		return time.Time{}
 	}
-	switch val.(type) {
+	switch val := val.(type) {
 	case time.Time:
-		return val.(time.Time)
+		return val
 	default:
 		return time.Time{}
 	}
