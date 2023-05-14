@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
-	df "github.com/rocketlaunchr/dataframe-go"
 )
 
 // Trader acts as the primary interface to the broker and strategy. To the strategy, it provides all the information
@@ -23,12 +22,12 @@ type Trader struct {
 	CandlesToKeep int
 	Log           *log.Logger
 
-	data  *df.DataFrame
+	data  *DataFrame
 	sched *gocron.Scheduler
 	idx   int
 }
 
-func (t *Trader) Data() *df.DataFrame {
+func (t *Trader) Data() *DataFrame {
 	return t.data
 }
 

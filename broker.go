@@ -3,8 +3,6 @@ package autotrader
 import (
 	"errors"
 	"time"
-
-	df "github.com/rocketlaunchr/dataframe-go"
 )
 
 type OrderType string
@@ -53,7 +51,7 @@ type Position interface {
 
 type Broker interface {
 	// Candles returns a dataframe of candles for the given symbol, frequency, and count by querying the broker.
-	Candles(symbol string, frequency string, count int) (*df.DataFrame, error)
+	Candles(symbol string, frequency string, count int) (*DataFrame, error)
 	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.
 	// Orders returns a slice of orders that have been placed with the broker. If an order has been canceled or

@@ -37,29 +37,29 @@ func newTestingDataframe() *df.DataFrame {
 }
 
 func TestBacktestingBrokerCandles(t *testing.T) {
-	data := newTestingDataframe()
+	data := NewDataFrame(newTestingDataframe())
 	broker := NewTestBroker(nil, data, 0, 0, 0, 0)
 
 	candles, err := broker.Candles("EUR_USD", "D", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candles.NRows() != 1 {
-		t.Errorf("Expected 1 candle, got %d", candles.NRows())
+	if candles.Len() != 1 {
+		t.Errorf("Expected 1 candle, got %d", candles.Len())
 	}
-	if candles.Series[0].Value(0).(time.Time) != time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC) {
-		t.Errorf("Expected first candle to be 2022-01-01, got %s", candles.Series[0].Value(0))
+	if candles.Date(0) != time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("Expected first candle to be 2022-01-01, got %s", candles.Date(0))
 	}
 
 	candles, err = broker.Candles("EUR_USD", "D", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if candles.NRows() != 2 {
-		t.Errorf("Expected 2 candles, got %d", candles.NRows())
+	if candles.Len() != 2 {
+		t.Errorf("Expected 2 candles, got %d", candles.Len())
 	}
-	if candles.Series[0].Value(1).(time.Time) != time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC) {
-		t.Errorf("Expected second candle to be 2022-01-02, got %s", candles.Series[0].Value(1))
+	if candles.Date(1) != time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC) {
+		t.Errorf("Expected second candle to be 2022-01-02, got %s", candles.Date(1))
 	}
 
 	for i := 0; i < 7; i++ { // 7 because we want to call broker.Candles 9 times total
@@ -71,11 +71,11 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 			t.Errorf("Candles is nil on iteration %d", i+1)
 		}
 	}
-	if candles.NRows() != 5 {
-		t.Errorf("Expected 5 candles, got %d", candles.NRows())
+	if candles.Len() != 5 {
+		t.Errorf("Expected 5 candles, got %d", candles.Len())
 	}
-	if candles.Series[4].Value(4).(float64) != 1.3 {
-		t.Errorf("Expected the last closing price to be 1.3, got %f", candles.Series[4].Value(4))
+	if candles.Close(4) != 1.3 {
+		t.Errorf("Expected the last closing price to be 1.3, got %f", candles.Close(4))
 	}
 }
 
@@ -88,7 +88,8 @@ func TestBacktestingBrokerFunctions(t *testing.T) {
 }
 
 func TestBacktestingBrokerOrders(t *testing.T) {
-	broker := NewTestBroker(nil, newTestingDataframe(), 100_000, 50, 0, 0)
+	data := NewDataFrame(newTestingDataframe())
+	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
 	timeBeforeOrder := time.Now()
 	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
 	if err != nil {

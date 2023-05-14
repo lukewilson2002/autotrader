@@ -49,7 +49,7 @@ func main() {
 		// 	AccountID:   "101-001-14983263-001",
 		// 	DemoAccount: true,
 		// }),
-		Broker:        auto.NewTestBroker(nil, data, 10000, 50, 0.0002, 0),
+		Broker:        auto.NewTestBroker(nil, auto.NewDataFrame(data), 10000, 50, 0.0002, 0),
 		Strategy:      &SMAStrategy{},
 		Symbol:        "EUR_USD",
 		Frequency:     "D",

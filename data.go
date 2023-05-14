@@ -252,8 +252,18 @@ type DataFrame struct {
 	data *df.DataFrame // DataFrame with a Date, Open, High, Low, Close, and Volume column.
 }
 
-func (o *DataFrame) Copy() *DataFrame {
-	return &DataFrame{o.data.Copy()}
+// Copy copies the DataFrame from start to end (inclusive). If end is -1, it will copy to the end of the DataFrame. If start is out of bounds, nil is returned.
+func (o *DataFrame) Copy(start, end int) *DataFrame {
+	var _end *int
+	if start < 0 || start >= o.Len() {
+		return nil
+	} else if end >= 0 {
+		if end < start {
+			return nil
+		}
+		_end = &end
+	}
+	return &DataFrame{o.data.Copy(df.Range{Start: &start, End: _end})}
 }
 
 // Len returns the number of rows in the DataFrame or 0 if the DataFrame is nil.
