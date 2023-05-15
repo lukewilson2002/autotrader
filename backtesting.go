@@ -2,6 +2,7 @@ package autotrader
 
 import (
 	"errors"
+	"log"
 	"strconv"
 	"time"
 
@@ -18,6 +19,9 @@ func Backtest(trader *Trader) {
 	for !trader.EOF {
 		trader.Tick()
 	}
+	log.Println("Backtest complete.")
+	log.Println("Stats:")
+	log.Println(trader.Stats())
 }
 
 // TestBroker is a broker that can be used for testing. It implements the Broker interface and fulfills orders

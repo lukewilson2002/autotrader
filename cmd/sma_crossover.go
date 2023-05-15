@@ -29,16 +29,7 @@ func main() {
 	// 	os.Exit(1)
 	// }
 
-	data, err := auto.ReadDataCSV("./EUR_USD Historical Data.csv", auto.DataCSVLayout{
-		LatestFirst: true,
-		DateFormat:  "01/02/2006",
-		Date:        "\ufeff\"Date\"",
-		Open:        "Open",
-		High:        "High",
-		Low:         "Low",
-		Close:       "Price",
-		Volume:      "Vol.",
-	})
+	data, err := auto.EURUSD()
 	if err != nil {
 		panic(err)
 	}
@@ -49,7 +40,7 @@ func main() {
 		// 	AccountID:   "101-001-14983263-001",
 		// 	DemoAccount: true,
 		// }),
-		Broker:        auto.NewTestBroker(nil, auto.NewDataFrame(data), 10000, 50, 0.0002, 0),
+		Broker:        auto.NewTestBroker(nil, data, 10000, 50, 0.0002, 0),
 		Strategy:      &SMAStrategy{},
 		Symbol:        "EUR_USD",
 		Frequency:     "D",

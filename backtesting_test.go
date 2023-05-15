@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	df "github.com/rocketlaunchr/dataframe-go"
 )
 
 const testDataCSV = `date,open,high,low,close,volume
@@ -19,8 +17,8 @@ const testDataCSV = `date,open,high,low,close,volume
 2022-01-08,1.25,1.3,1.2,1.1,150
 2022-01-09,1.1,1.4,1.0,1.3,220`
 
-func newTestingDataframe() *df.DataFrame {
-	data, err := ReadDataCSVFromReader(strings.NewReader(testDataCSV), DataCSVLayout{
+func newTestingDataframe() *DataFrame {
+	data, err := DataFrameFromCSVReaderLayout(strings.NewReader(testDataCSV), DataCSVLayout{
 		LatestFirst: false,
 		DateFormat:  "2006-01-02",
 		Date:        "date",
@@ -37,7 +35,7 @@ func newTestingDataframe() *df.DataFrame {
 }
 
 func TestBacktestingBrokerCandles(t *testing.T) {
-	data := NewDataFrame(newTestingDataframe())
+	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 0, 0, 0, 0)
 
 	candles, err := broker.Candles("EUR_USD", "D", 3)
@@ -88,7 +86,7 @@ func TestBacktestingBrokerFunctions(t *testing.T) {
 }
 
 func TestBacktestingBrokerOrders(t *testing.T) {
-	data := NewDataFrame(newTestingDataframe())
+	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
 	timeBeforeOrder := time.Now()
 	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit

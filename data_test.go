@@ -6,18 +6,15 @@ import (
 )
 
 func newTestingDataFrame() *DataFrame {
-	_dataframe, err := ReadEURUSDDataCSV()
+	data, err := EURUSD()
 	if err != nil {
-		return nil
+		panic(err)
 	}
-	return NewDataFrame(_dataframe)
+	return data
 }
 
 func TestDataSeries(t *testing.T) {
 	data := newTestingDataFrame()
-	if data == nil {
-		t.Fatal("Could not create DataFrame")
-	}
 
 	dates, closes := data.Dates(), data.Closes()
 
@@ -39,9 +36,6 @@ func TestDataSeries(t *testing.T) {
 
 func TestDataFrame(t *testing.T) {
 	data := newTestingDataFrame()
-	if data == nil {
-		t.Fatal("Could not create DataFrame")
-	}
 
 	if data.Len() != 2610 {
 		t.Fatalf("Expected 2610 rows, got %d", data.Len())
@@ -55,7 +49,11 @@ func TestDataFrame(t *testing.T) {
 		t.Fatalf("Expected 2013-05-13, got %s", date.Format(time.DateOnly))
 	}
 
-	data.PushCandle(time.Date(2023, 5, 14, 0, 0, 0, 0, time.UTC), 1.0, 1.0, 1.0, 1.0, 1)
+	err := data.PushCandle(time.Date(2023, 5, 14, 0, 0, 0, 0, time.UTC), 1.0, 1.0, 1.0, 1.0, 1)
+	if err != nil {
+		t.Log(data.Names())
+		t.Fatalf("Expected no error, got %s", err)
+	}
 	if data.Len() != 2611 {
 		t.Fatalf("Expected 2611 rows, got %d", data.Len())
 	}
@@ -65,37 +63,34 @@ func TestDataFrame(t *testing.T) {
 }
 
 func TestReadDataCSV(t *testing.T) {
-	data, err := ReadEURUSDDataCSV()
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := newTestingDataFrame()
 
-	if data.NRows() != 2610 {
-		t.Fatalf("Expected 2610 rows, got %d", data.NRows())
+	if data.Len() != 2610 {
+		t.Fatalf("Expected 2610 rows, got %d", data.Len())
 	}
 	if len(data.Names()) != 6 {
 		t.Fatalf("Expected 6 columns, got %d", len(data.Names()))
 	}
-	if data.Series[0].Name() != "Date" {
-		t.Fatalf("Expected Date column, got %s", data.Series[0].Name())
+	if data.Series("Date") == nil {
+		t.Fatalf("Expected Date column, got nil")
 	}
-	if data.Series[1].Name() != "Open" {
-		t.Fatalf("Expected Open column, got %s", data.Series[1].Name())
+	if data.Series("Open") == nil {
+		t.Fatalf("Expected Open column, got nil")
 	}
-	if data.Series[2].Name() != "High" {
-		t.Fatalf("Expected High column, got %s", data.Series[2].Name())
+	if data.Series("High") == nil {
+		t.Fatalf("Expected High column, got nil")
 	}
-	if data.Series[3].Name() != "Low" {
-		t.Fatalf("Expected Low column, got %s", data.Series[3].Name())
+	if data.Series("Low") == nil {
+		t.Fatalf("Expected Low column, got nil")
 	}
-	if data.Series[4].Name() != "Close" {
-		t.Fatalf("Expected Close column, got %s", data.Series[4].Name())
+	if data.Series("Close") == nil {
+		t.Fatalf("Expected Close column, got nil")
 	}
-	if data.Series[5].Name() != "Volume" {
-		t.Fatalf("Expected Volume column, got %s", data.Series[5].Name())
+	if data.Series("Volume") == nil {
+		t.Fatalf("Expected Volume column, got nil")
 	}
 
-	if data.Series[0].Type() != "time" {
-		t.Fatalf("Expected Date column type time, got %s", data.Series[0].Type())
+	if data.Series("Date").Time(0).Equal(time.Time{}) {
+		t.Fatalf("Expected Date column to have type time.Time, got %s", data.Value("Date", 0))
 	}
 }
