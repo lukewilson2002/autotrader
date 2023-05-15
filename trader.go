@@ -21,14 +21,20 @@ type Trader struct {
 	Frequency     string
 	CandlesToKeep int
 	Log           *log.Logger
+	EOF           bool
 
 	data  *DataFrame
 	sched *gocron.Scheduler
 	idx   int
+	stats *DataFrame // Performance (financial) reporting and statistics.
 }
 
 func (t *Trader) Data() *DataFrame {
 	return t.data
+}
+
+func (t *Trader) Stats() *DataFrame {
+	return t.stats
 }
 
 // Run starts the trader. This is a blocking call.
@@ -71,18 +77,21 @@ func (t *Trader) Run() {
 
 // Tick updates the current state of the market and runs the strategy.
 func (t *Trader) Tick() {
+	t.Log.Println("Tick")
 	if t.idx == 0 {
 		t.Strategy.Init(t)
 	}
 	t.fetchData()
 	t.Strategy.Next(t)
-	t.Log.Println("Tick")
 }
 
 func (t *Trader) fetchData() {
 	var err error
 	t.data, err = t.Broker.Candles(t.Symbol, t.Frequency, t.CandlesToKeep)
-	if err != nil {
+	if err == ErrEOF {
+		t.Log.Println("End of data")
+		t.sched.Clear()
+	} else if err != nil {
 		panic(err) // TODO: implement safe shutdown procedure
 	}
 }
@@ -105,5 +114,6 @@ func NewTrader(config TraderConfig) *Trader {
 		Frequency:     config.Frequency,
 		CandlesToKeep: config.CandlesToKeep,
 		Log:           logger,
+		stats:         NewDataFrame(nil),
 	}
 }

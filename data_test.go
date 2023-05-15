@@ -54,6 +54,14 @@ func TestDataFrame(t *testing.T) {
 	if date.Year() != 2013 || date.Month() != 5 || date.Day() != 13 {
 		t.Fatalf("Expected 2013-05-13, got %s", date.Format(time.DateOnly))
 	}
+
+	data.PushCandle(time.Date(2023, 5, 14, 0, 0, 0, 0, time.UTC), 1.0, 1.0, 1.0, 1.0, 1)
+	if data.Len() != 2611 {
+		t.Fatalf("Expected 2611 rows, got %d", data.Len())
+	}
+	if data.Close(-1) != 1.0 {
+		t.Fatalf("Expected latest close to be 1.0, got %f", data.Close(-1))
+	}
 }
 
 func TestReadDataCSV(t *testing.T) {

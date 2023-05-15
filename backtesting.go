@@ -15,7 +15,9 @@ var (
 )
 
 func Backtest(trader *Trader) {
-	trader.Tick()
+	for !trader.EOF {
+		trader.Tick()
+	}
 }
 
 // TestBroker is a broker that can be used for testing. It implements the Broker interface and fulfills orders
@@ -41,10 +43,15 @@ type TestBroker struct {
 	positions   []Position
 }
 
+// CandleIndex returns the index of the current candle.
+func (b *TestBroker) candleIndex() int {
+	return Max(b.candleCount-1, 0)
+}
+
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
 	// Check if we reached the end of the existing data.
 	if b.Data != nil && b.candleCount >= b.Data.Len() {
-		return b.Data.Copy(0, -1), ErrEOF
+		return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
 	}
 
 	// Catch up to the start candles.
@@ -82,7 +89,7 @@ func (b *TestBroker) candles(symbol string, frequency string, count int) (*DataF
 	end := Max(b.candleCount, 1) - 1
 	start := Max(Max(b.candleCount, 1)-count, 0)
 
-	return b.Data.Copy(start, end), nil
+	return b.Data.Copy(start, end).(*DataFrame), nil
 }
 
 func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {
@@ -95,7 +102,7 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 			return nil, err
 		}
 	}
-	price := b.Data.Close(Max(b.candleCount-1, 0)) // Get the last close price.
+	price := b.Data.Close(b.candleIndex()) // Get the last close price.
 
 	// Instantly fulfill the order.
 	b.Cash -= price * units * LeverageToMargin(b.Leverage)
@@ -145,6 +152,7 @@ func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread fl
 }
 
 type TestPosition struct {
+	broker     *TestBroker
 	closed     bool
 	entryPrice float64
 	id         string
@@ -181,7 +189,10 @@ func (p *TestPosition) Leverage() float64 {
 }
 
 func (p *TestPosition) PL() float64 {
-	return 0
+	price := p.broker.Data.Close(p.broker.candleIndex()) + p.broker.Spread
+	priceDiff := price - p.entryPrice
+	units := priceDiff * p.units * LeverageToMargin(p.leverage)
+	return units * price
 }
 
 func (p *TestPosition) Symbol() string {

@@ -23,14 +23,18 @@ func EasyIndex(i, n int) int {
 }
 
 type Series interface {
-	Copy() Series
+	Copy(start, end int) Series
 	Len() int
 
 	// Statistical functions.
 	Rolling(period int) *RollingSeries
 
+	Push(val interface{}) Series
+
 	// Data access functions.
 	Value(i int) interface{}
+	ValueRange(start, end int) []interface{}
+	Values() []interface{} // Values is the same as ValueRange(0, -1).
 	Float(i int) float64
 	Int(i int) int64
 	String(i int) string
@@ -38,7 +42,7 @@ type Series interface {
 }
 
 type Frame interface {
-	Copy() Frame
+	Copy(start, end int) Frame
 	Len() int
 
 	// Easy access functions.
@@ -55,7 +59,9 @@ type Frame interface {
 	Closes() Series
 	Volumes() Series
 
-	// Custom data columns
+	PushCandle(date time.Time, open, high, low, close, volume float64) Frame
+	// AddSeries(name string, s Series) error
+
 	Series(name string) Series
 	Value(column string, i int) interface{}
 	Float(column string, i int) float64
@@ -253,7 +259,7 @@ type DataFrame struct {
 }
 
 // Copy copies the DataFrame from start to end (inclusive). If end is -1, it will copy to the end of the DataFrame. If start is out of bounds, nil is returned.
-func (o *DataFrame) Copy(start, end int) *DataFrame {
+func (o *DataFrame) Copy(start, end int) Frame {
 	var _end *int
 	if start < 0 || start >= o.Len() {
 		return nil
@@ -340,6 +346,22 @@ func (o *DataFrame) Volumes() Series {
 	return o.Series("Volume")
 }
 
+func (o *DataFrame) PushCandle(date time.Time, open, high, low, close, volume float64) Frame {
+	if o.data == nil {
+		o.data = df.NewDataFrame([]df.Series{
+			df.NewSeriesTime("Date", nil, date),
+			df.NewSeriesFloat64("Open", nil, open),
+			df.NewSeriesFloat64("High", nil, high),
+			df.NewSeriesFloat64("Low", nil, low),
+			df.NewSeriesFloat64("Close", nil, close),
+			df.NewSeriesFloat64("Volume", nil, volume),
+		}...)
+		return o
+	}
+	o.data.Append(nil, date, open, high, low, close, volume)
+	return o
+}
+
 // Series returns a Series of the column with the given name. If the column does not exist, nil is returned.
 func (o *DataFrame) Series(name string) Series {
 	if o.data == nil {
@@ -380,13 +402,13 @@ func (o *DataFrame) Float(column string, i int) float64 {
 }
 
 // Int returns the value of the column at index i casted to int. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
-func (o *DataFrame) Int(column string, i int) int {
+func (o *DataFrame) Int(column string, i int) int64 {
 	val := o.Value(column, i)
 	if val == nil {
 		return 0
 	}
 	switch val := val.(type) {
-	case int:
+	case int64:
 		return val
 	default:
 		return 0
@@ -425,8 +447,18 @@ func NewDataFrame(data *df.DataFrame) *DataFrame {
 	return &DataFrame{data}
 }
 
-func (s *DataSeries) Copy() Series {
-	return &DataSeries{s.data.Copy()}
+// Copy copies the Series from start to end (inclusive). If end is -1, it will copy to the end of the Series. If start is out of bounds, nil is returned.
+func (s *DataSeries) Copy(start, end int) Series {
+	var _end *int
+	if start < 0 || start >= s.Len() {
+		return nil
+	} else if end >= 0 {
+		if end < start {
+			return nil
+		}
+		_end = &end
+	}
+	return &DataSeries{s.data.Copy(df.Range{Start: &start, End: _end})}
 }
 
 func (s *DataSeries) Len() int {
@@ -440,12 +472,47 @@ func (s *DataSeries) Rolling(period int) *RollingSeries {
 	return &RollingSeries{s, period}
 }
 
+func (s *DataSeries) Push(value interface{}) Series {
+	if s.data != nil {
+		s.data.Append(value)
+	}
+	return s
+}
+
 func (s *DataSeries) Value(i int) interface{} {
 	if s.data == nil {
 		return nil
 	}
 	i = EasyIndex(i, s.Len()) // Allow for negative indexing.
 	return s.data.Value(i)
+}
+
+// ValueRange returns a slice of values from start to end, including start and end. The first value is at index 0. A negative value for start or end can be used to get values from the latest, like Python's negative indexing. If end is less than zero, it will be sliced from start to the last item. If start or end is out of bounds, nil is returned. If start is greater than end, nil is returned.
+func (s *DataSeries) ValueRange(start, end int) []interface{} {
+	if s.data == nil {
+		return nil
+	}
+	start = EasyIndex(start, s.Len())
+	if start < 0 || start >= s.Len() || end >= s.Len() {
+		return nil
+	} else if end < 0 {
+		end = s.Len() - 1
+	} else if start > end {
+		return nil
+	}
+
+	items := make([]interface{}, end-start+1)
+	for i := start; i <= end; i++ {
+		items[i-start] = s.Value(i)
+	}
+	return items
+}
+
+func (s *DataSeries) Values() []interface{} {
+	if s.data == nil {
+		return nil
+	}
+	return s.ValueRange(0, -1)
 }
 
 func (s *DataSeries) Float(i int) float64 {
