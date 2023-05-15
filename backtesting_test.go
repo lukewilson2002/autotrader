@@ -1,6 +1,7 @@
 package autotrader
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,7 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 		t.Errorf("Expected first candle to be 2022-01-01, got %s", candles.Date(0))
 	}
 
+	broker.Advance()
 	candles, err = broker.Candles("EUR_USD", "D", 3)
 	if err != nil {
 		t.Fatal(err)
@@ -60,10 +62,11 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 		t.Errorf("Expected second candle to be 2022-01-02, got %s", candles.Date(1))
 	}
 
-	for i := 0; i < 7; i++ { // 7 because we want to call broker.Candles 9 times total
+	for i := 0; i < 7; i++ { // 6 because we want to call broker.Candles 9 times total
+		broker.Advance()
 		candles, err = broker.Candles("EUR_USD", "D", 5)
 		if err != nil {
-			t.Fatalf("Got an error on iteration %d: %v", i, err)
+			t.Fatalf("Got an error on iteration %d: %v (called Candles %d times)", i, err, 2+i+1)
 		}
 		if candles == nil {
 			t.Errorf("Candles is nil on iteration %d", i+1)
@@ -88,6 +91,7 @@ func TestBacktestingBrokerFunctions(t *testing.T) {
 func TestBacktestingBrokerOrders(t *testing.T) {
 	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+
 	timeBeforeOrder := time.Now()
 	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
 	if err != nil {
@@ -123,5 +127,53 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 	}
 	if order.Type() != MarketOrder {
 		t.Errorf("Expected order type to be MarketOrder, got %s", order.Type())
+	}
+
+	position := order.Position()
+	if position == nil {
+		t.Fatal("Position is nil")
+	}
+	if position.Symbol() != "EUR_USD" {
+		t.Errorf("Expected symbol to be EUR_USD, got %s", position.Symbol())
+	}
+	if position.Units() != 50_000 {
+		t.Errorf("Expected units to be 50_000, got %f", position.Units())
+	}
+	if position.EntryPrice() != 1.15 {
+		t.Errorf("Expected entry price to be 1.15 (first close), got %f", position.EntryPrice())
+	}
+	if position.Time().Before(timeBeforeOrder) {
+		t.Error("Expected position time to be after timeBeforeOrder")
+	}
+	if position.Leverage() != 50 {
+		t.Errorf("Expected leverage to be 50, got %f", position.Leverage())
+	}
+	if position.StopLoss() != 0 {
+		t.Errorf("Expected stop loss to be 0, got %f", position.StopLoss())
+	}
+	if position.TakeProfit() != 0 {
+		t.Errorf("Expected take profit to be 0, got %f", position.TakeProfit())
+	}
+
+	if broker.NAV() != 100_000 { // NAV should not change until the next candle
+		t.Errorf("Expected NAV to be 100_000, got %f", broker.NAV())
+	}
+
+	broker.Advance()                       // Advance broker to the next candle
+	if math.Round(position.PL()) != 2500 { // (1.2-1.15) * 50_000 = 2500
+		t.Errorf("Expected position PL to be 2500, got %f", position.PL())
+	}
+	if math.Round(broker.NAV()) != 102_500 {
+		t.Errorf("Expected NAV to be 102_500, got %f", broker.NAV())
+	}
+
+	// Test closing positions.
+	position.Close()
+	if position.Closed() != true {
+		t.Error("Expected position to be closed")
+	}
+	broker.Advance()
+	if broker.NAV() != 102_500 {
+		t.Errorf("Expected NAV to still be 102_500, got %f", broker.NAV())
 	}
 }

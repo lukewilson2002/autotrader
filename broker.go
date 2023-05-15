@@ -38,7 +38,9 @@ type Order interface {
 type Position interface {
 	Close() error        // Close attempts to close the position and returns an error if it fails. If the error is nil, the position was closed.
 	Closed() bool        // Closed returns true if the position has been closed with the broker.
+	ClosePrice() float64 // ClosePrice returns the price of the symbol at the time the position was closed. May be zero if the position is still open.
 	EntryPrice() float64 // EntryPrice returns the price of the symbol at the time the position was opened.
+	EntryValue() float64 // EntryValue returns the value of the position at the time it was opened.
 	Id() string          // Id returns the unique identifier of the position by the broker.
 	Leverage() float64   // Leverage returns the leverage of the position.
 	PL() float64         // PL returns the profit or loss of the position.
@@ -47,6 +49,7 @@ type Position interface {
 	TakeProfit() float64 // TakeProfit returns the take profit price of the position.
 	Time() time.Time     // Time returns the time the position was opened.
 	Units() float64      // Units returns the number of units purchased or sold by the position.
+	Value() float64      // Value returns the value of the position at the current price.
 }
 
 type Broker interface {

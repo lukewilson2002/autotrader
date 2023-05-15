@@ -35,12 +35,11 @@ func Backtest(trader *Trader) {
 //   - PositionModified(Position) - Called when a position changes.
 type TestBroker struct {
 	SignalManager
-	DataBroker   Broker
-	Data         *DataFrame
-	Cash         float64
-	Leverage     float64
-	Spread       float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
-	StartCandles int
+	DataBroker Broker
+	Data       *DataFrame
+	Cash       float64
+	Leverage   float64
+	Spread     float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
 
 	candleCount int // The number of candles anyone outside this broker has seen. Also equal to the number of times Candles has been called.
 	orders      []Order
@@ -48,27 +47,26 @@ type TestBroker struct {
 }
 
 // CandleIndex returns the index of the current candle.
-func (b *TestBroker) candleIndex() int {
+func (b *TestBroker) CandleIndex() int {
 	return Max(b.candleCount-1, 0)
+}
+
+// Advance advances the test broker to the next candle in the input data. This should be done at the end of the
+// strategy loop.
+func (b *TestBroker) Advance() {
+	b.candleCount++
 }
 
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
 	// Check if we reached the end of the existing data.
-	if b.Data != nil && b.candleCount >= b.Data.Len() {
+	if b.Data != nil && b.candleCount > b.Data.Len() {
 		return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
 	}
 
-	// Catch up to the start candles.
-	if b.candleCount < b.StartCandles {
-		b.candleCount = b.StartCandles
-	} else {
-		b.candleCount++
-	}
-	return b.candles(symbol, frequency, count)
+	data, err := b.candles(symbol, frequency, count)
+	return data, err
 }
 
-// candles does the same as the public Candles except it doesn't increment b.candleCount so that it can be used
-// internally to fetch candles without incrementing the count.
 func (b *TestBroker) candles(symbol string, frequency string, count int) (*DataFrame, error) {
 	if b.DataBroker != nil && b.Data == nil {
 		// Fetch a lot of candles from the broker so we don't keep asking.
@@ -83,14 +81,7 @@ func (b *TestBroker) candles(symbol string, frequency string, count int) (*DataF
 
 	// TODO: check if count > our rows if we are using a data broker and then fetch more data if so.
 
-	// Catch up to the start candles.
-	if b.candleCount < b.StartCandles {
-		b.candleCount = b.StartCandles
-	}
-
-	// We use a Max(b.candleCount, 1) because we want to return at least 1 candle (even if b.candleCount is 0),
-	// which may happen if we call this function before the first call to Candles.
-	end := Max(b.candleCount, 1) - 1
+	end := b.candleCount - 1
 	start := Max(Max(b.candleCount, 1)-count, 0)
 
 	return b.Data.Copy(start, end).(*DataFrame), nil
@@ -106,16 +97,12 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 			return nil, err
 		}
 	}
-	price := b.Data.Close(b.candleIndex()) // Get the last close price.
-
-	// Instantly fulfill the order.
-	b.Cash -= price * units * LeverageToMargin(b.Leverage)
-	position := &TestPosition{}
+	price := b.Data.Close(b.CandleIndex()) // Get the last close price.
 
 	order := &TestOrder{
 		id:         strconv.Itoa(rand.Int()),
 		leverage:   b.Leverage,
-		position:   position,
+		position:   nil,
 		price:      price,
 		symbol:     symbol,
 		stopLoss:   stopLoss,
@@ -125,15 +112,37 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		units:      units,
 	}
 
+	// Instantly fulfill the order.
+	order.position = &TestPosition{
+		broker:     b,
+		closed:     false,
+		entryPrice: price,
+		id:         strconv.Itoa(rand.Int()),
+		leverage:   b.Leverage,
+		symbol:     symbol,
+		stopLoss:   stopLoss,
+		takeProfit: takeProfit,
+		time:       time.Now(),
+		units:      units,
+	}
+	b.Cash -= order.position.EntryValue()
+
 	b.orders = append(b.orders, order)
-	b.positions = append(b.positions, position)
+	b.positions = append(b.positions, order.position)
 	b.SignalEmit("OrderPlaced", order)
 
 	return order, nil
 }
 
 func (b *TestBroker) NAV() float64 {
-	return b.Cash
+	nav := b.Cash
+	// Add the value of open positions to our NAV.
+	for _, position := range b.positions {
+		if !position.Closed() {
+			nav += position.Value()
+		}
+	}
+	return nav
 }
 
 func (b *TestBroker) Orders() []Order {
@@ -146,12 +155,12 @@ func (b *TestBroker) Positions() []Position {
 
 func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
 	return &TestBroker{
-		DataBroker:   dataBroker,
-		Data:         data,
-		Cash:         cash,
-		Leverage:     Max(leverage, 1),
-		Spread:       spread,
-		StartCandles: Max(startCandles-1, 0),
+		DataBroker:  dataBroker,
+		Data:        data,
+		Cash:        cash,
+		Leverage:    Max(leverage, 1),
+		Spread:      spread,
+		candleCount: Max(startCandles, 1),
 	}
 }
 
@@ -159,6 +168,7 @@ type TestPosition struct {
 	broker     *TestBroker
 	closed     bool
 	entryPrice float64
+	closePrice float64 // If zero, then position has not been closed.
 	id         string
 	leverage   float64
 	symbol     string
@@ -173,6 +183,8 @@ func (p *TestPosition) Close() error {
 		return ErrPositionClosed
 	}
 	p.closed = true
+	p.closePrice = p.broker.Data.Close(p.broker.CandleIndex()) - p.broker.Spread // Get the last close price.
+	p.broker.Cash += p.Value()                                                   // Return the value of the position to the broker.
 	return nil
 }
 
@@ -184,6 +196,14 @@ func (p *TestPosition) EntryPrice() float64 {
 	return p.entryPrice
 }
 
+func (p *TestPosition) ClosePrice() float64 {
+	return p.closePrice
+}
+
+func (p *TestPosition) EntryValue() float64 {
+	return p.entryPrice * p.units
+}
+
 func (p *TestPosition) Id() string {
 	return p.id
 }
@@ -193,10 +213,7 @@ func (p *TestPosition) Leverage() float64 {
 }
 
 func (p *TestPosition) PL() float64 {
-	price := p.broker.Data.Close(p.broker.candleIndex()) + p.broker.Spread
-	priceDiff := price - p.entryPrice
-	units := priceDiff * p.units * LeverageToMargin(p.leverage)
-	return units * price
+	return p.Value() - p.EntryValue()
 }
 
 func (p *TestPosition) Symbol() string {
@@ -217,6 +234,14 @@ func (p *TestPosition) Time() time.Time {
 
 func (p *TestPosition) Units() float64 {
 	return p.units
+}
+
+func (p *TestPosition) Value() float64 {
+	if p.closed {
+		return p.closePrice * p.units
+	}
+	bid := p.broker.Data.Close(p.broker.CandleIndex()) - p.broker.Spread
+	return bid * p.units
 }
 
 type TestOrder struct {
