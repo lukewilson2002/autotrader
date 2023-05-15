@@ -58,17 +58,9 @@ func (b *TestBroker) Advance() {
 }
 
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
-	// Check if we reached the end of the existing data.
-	if b.Data != nil && b.candleCount > b.Data.Len() {
+	if b.Data != nil && b.candleCount > b.Data.Len() { // We have data and we are at the end of it.
 		return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
-	}
-
-	data, err := b.candles(symbol, frequency, count)
-	return data, err
-}
-
-func (b *TestBroker) candles(symbol string, frequency string, count int) (*DataFrame, error) {
-	if b.DataBroker != nil && b.Data == nil {
+	} else if b.DataBroker != nil && b.Data == nil { // We have a data broker but no data.
 		// Fetch a lot of candles from the broker so we don't keep asking.
 		candles, err := b.DataBroker.Candles(symbol, frequency, Max(count, 1000))
 		if err != nil {
@@ -88,11 +80,11 @@ func (b *TestBroker) candles(symbol string, frequency string, count int) (*DataF
 }
 
 func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {
-	if b.Data == nil { // The dataBroker could have data but nobody has called Candles, yet.
+	if b.Data == nil { // The DataBroker could have data but nobody has fetched it, yet.
 		if b.DataBroker == nil {
 			return nil, ErrNoData
 		}
-		_, err := b.candles("", "", 1) // Fetch 1 candle.
+		_, err := b.Candles("", "", 1) // Fetch data from the DataBroker.
 		if err != nil {
 			return nil, err
 		}
