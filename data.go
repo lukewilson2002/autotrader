@@ -259,9 +259,9 @@ type DataFrame struct {
 }
 
 // Copy copies the DataFrame from start to end (inclusive). If end is -1, it will copy to the end of the DataFrame. If start is out of bounds, nil is returned.
-func (o *DataFrame) Copy(start, end int) Frame {
+func (d *DataFrame) Copy(start, end int) Frame {
 	var _end *int
-	if start < 0 || start >= o.Len() {
+	if start < 0 || start >= d.Len() {
 		return nil
 	} else if end >= 0 {
 		if end < start {
@@ -269,86 +269,86 @@ func (o *DataFrame) Copy(start, end int) Frame {
 		}
 		_end = &end
 	}
-	return &DataFrame{o.data.Copy(df.Range{Start: &start, End: _end})}
+	return &DataFrame{d.data.Copy(df.Range{Start: &start, End: _end})}
 }
 
 // Len returns the number of rows in the DataFrame or 0 if the DataFrame is nil.
-func (o *DataFrame) Len() int {
-	if o.data == nil {
+func (d *DataFrame) Len() int {
+	if d.data == nil {
 		return 0
 	}
-	return o.data.NRows()
+	return d.data.NRows()
 }
 
 // Date returns the value of the Date column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Time("Date", i).
-func (o *DataFrame) Date(i int) time.Time {
-	return o.Time("Date", i)
+func (d *DataFrame) Date(i int) time.Time {
+	return d.Time("Date", i)
 }
 
 // Open returns the open price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("Open", i).
-func (o *DataFrame) Open(i int) float64 {
-	return o.Float("Open", i)
+func (d *DataFrame) Open(i int) float64 {
+	return d.Float("Open", i)
 }
 
 // High returns the high price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("High", i).
-func (o *DataFrame) High(i int) float64 {
-	return o.Float("High", i)
+func (d *DataFrame) High(i int) float64 {
+	return d.Float("High", i)
 }
 
 // Low returns the low price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("Low", i).
-func (o *DataFrame) Low(i int) float64 {
-	return o.Float("Low", i)
+func (d *DataFrame) Low(i int) float64 {
+	return d.Float("Low", i)
 }
 
 // Close returns the close price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("Close", i).
-func (o *DataFrame) Close(i int) float64 {
-	return o.Float("Close", i)
+func (d *DataFrame) Close(i int) float64 {
+	return d.Float("Close", i)
 }
 
 // Volume returns the volume of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("Volume", i).
-func (o *DataFrame) Volume(i int) float64 {
-	return o.Float("Volume", i)
+func (d *DataFrame) Volume(i int) float64 {
+	return d.Float("Volume", i)
 }
 
 // Dates returns a Series of all the dates in the DataFrame.
-func (o *DataFrame) Dates() Series {
-	return o.Series("Date")
+func (d *DataFrame) Dates() Series {
+	return d.Series("Date")
 }
 
 // Opens returns a Series of all the open prices in the DataFrame.
-func (o *DataFrame) Opens() Series {
-	return o.Series("Open")
+func (d *DataFrame) Opens() Series {
+	return d.Series("Open")
 }
 
 // Highs returns a Series of all the high prices in the DataFrame.
-func (o *DataFrame) Highs() Series {
-	return o.Series("High")
+func (d *DataFrame) Highs() Series {
+	return d.Series("High")
 }
 
 // Lows returns a Series of all the low prices in the DataFrame.
-func (o *DataFrame) Lows() Series {
-	return o.Series("Low")
+func (d *DataFrame) Lows() Series {
+	return d.Series("Low")
 }
 
 // Closes returns a Series of all the close prices in the DataFrame.
-func (o *DataFrame) Closes() Series {
-	return o.Series("Close")
+func (d *DataFrame) Closes() Series {
+	return d.Series("Close")
 }
 
 // Volumes returns a Series of all the volumes in the DataFrame.
-func (o *DataFrame) Volumes() Series {
-	return o.Series("Volume")
+func (d *DataFrame) Volumes() Series {
+	return d.Series("Volume")
 }
 
-func (o *DataFrame) PushCandle(date time.Time, open, high, low, close, volume float64) Frame {
-	if o.data == nil {
-		o.data = df.NewDataFrame([]df.Series{
+func (d *DataFrame) PushCandle(date time.Time, open, high, low, close, volume float64) Frame {
+	if d.data == nil {
+		d.data = df.NewDataFrame([]df.Series{
 			df.NewSeriesTime("Date", nil, date),
 			df.NewSeriesFloat64("Open", nil, open),
 			df.NewSeriesFloat64("High", nil, high),
@@ -356,40 +356,40 @@ func (o *DataFrame) PushCandle(date time.Time, open, high, low, close, volume fl
 			df.NewSeriesFloat64("Close", nil, close),
 			df.NewSeriesFloat64("Volume", nil, volume),
 		}...)
-		return o
+		return d
 	}
-	o.data.Append(nil, date, open, high, low, close, volume)
-	return o
+	d.data.Append(nil, date, open, high, low, close, volume)
+	return d
 }
 
 // Series returns a Series of the column with the given name. If the column does not exist, nil is returned.
-func (o *DataFrame) Series(name string) Series {
-	if o.data == nil {
+func (d *DataFrame) Series(name string) Series {
+	if d.data == nil {
 		return nil
 	}
-	colIdx, err := o.data.NameToColumn(name)
+	colIdx, err := d.data.NameToColumn(name)
 	if err != nil {
 		return nil
 	}
-	return &DataSeries{o.data.Series[colIdx]}
+	return &DataSeries{d.data.Series[colIdx]}
 }
 
 // Value returns the value of the column at index i. The first value is at index 0. A negative value for i can be used to get i values from the latest, like Python's negative indexing. If i is out of bounds, nil is returned.
-func (o *DataFrame) Value(column string, i int) interface{} {
-	if o.data == nil {
+func (d *DataFrame) Value(column string, i int) interface{} {
+	if d.data == nil {
 		return nil
 	}
-	i = EasyIndex(i, o.Len()) // Allow for negative indexing.
-	colIdx, err := o.data.NameToColumn(column)
-	if err != nil || i < 0 || i >= o.Len() { // Prevent out of bounds access.
+	i = EasyIndex(i, d.Len()) // Allow for negative indexing.
+	colIdx, err := d.data.NameToColumn(column)
+	if err != nil || i < 0 || i >= d.Len() { // Prevent out of bounds access.
 		return nil
 	}
-	return o.data.Series[colIdx].Value(i)
+	return d.data.Series[colIdx].Value(i)
 }
 
 // Float returns the value of the column at index i casted to float64. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
-func (o *DataFrame) Float(column string, i int) float64 {
-	val := o.Value(column, i)
+func (d *DataFrame) Float(column string, i int) float64 {
+	val := d.Value(column, i)
 	if val == nil {
 		return 0
 	}
@@ -402,8 +402,8 @@ func (o *DataFrame) Float(column string, i int) float64 {
 }
 
 // Int returns the value of the column at index i casted to int. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
-func (o *DataFrame) Int(column string, i int) int64 {
-	val := o.Value(column, i)
+func (d *DataFrame) Int(column string, i int) int64 {
+	val := d.Value(column, i)
 	if val == nil {
 		return 0
 	}
@@ -416,8 +416,8 @@ func (o *DataFrame) Int(column string, i int) int64 {
 }
 
 // String returns the value of the column at index i casted to string. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, "" is returned.
-func (o *DataFrame) String(column string, i int) string {
-	val := o.Value(column, i)
+func (d *DataFrame) String(column string, i int) string {
+	val := d.Value(column, i)
 	if val == nil {
 		return ""
 	}
@@ -430,8 +430,8 @@ func (o *DataFrame) String(column string, i int) string {
 }
 
 // Time returns the value of the column at index i casted to time.Time. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, time.Time{} is returned.
-func (o *DataFrame) Time(column string, i int) time.Time {
-	val := o.Value(column, i)
+func (d *DataFrame) Time(column string, i int) time.Time {
+	val := d.Value(column, i)
 	if val == nil {
 		return time.Time{}
 	}
