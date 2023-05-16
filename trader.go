@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
+	"github.com/rocketlaunchr/dataframe-go"
 )
 
 // Trader acts as the primary interface to the broker and strategy. To the strategy, it provides all the information
@@ -25,7 +26,6 @@ type Trader struct {
 
 	data  *DataFrame
 	sched *gocron.Scheduler
-	idx   int
 	stats *DataFrame // Performance (financial) reporting and statistics.
 }
 
@@ -72,27 +72,68 @@ func (t *Trader) Run() {
 		}
 	}
 	t.sched.Do(t.Tick) // Set the function to be run when the interval repeats.
+
+	t.Init()
 	t.sched.StartBlocking()
+}
+
+func (t *Trader) Init() {
+	t.Strategy.Init(t)
+	t.stats = NewDataFrame(
+		NewDataSeries(dataframe.NewSeriesTime("Date", nil)),
+		NewDataSeries(dataframe.NewSeriesFloat64("Equity", nil)),
+	)
 }
 
 // Tick updates the current state of the market and runs the strategy.
 func (t *Trader) Tick() {
-	t.Log.Println("Tick")
-	if t.idx == 0 {
-		t.Strategy.Init(t)
-	}
-	t.fetchData()
-	t.Strategy.Next(t)
+	t.fetchData() // Fetch the latest candlesticks from the broker.
+	// t.Log.Println(t.data.Close(-1))
+	t.Strategy.Next(t) // Run the strategy.
+
+	// Update the stats.
+	t.stats.PushValues(map[string]interface{}{
+		"Date":   t.data.Date(-1),
+		"Equity": t.Broker.NAV(),
+	})
 }
 
 func (t *Trader) fetchData() {
 	var err error
 	t.data, err = t.Broker.Candles(t.Symbol, t.Frequency, t.CandlesToKeep)
 	if err == ErrEOF {
+		t.EOF = true
 		t.Log.Println("End of data")
-		t.sched.Clear()
+		if t.sched != nil && t.sched.IsRunning() {
+			t.sched.Clear()
+		}
 	} else if err != nil {
 		panic(err) // TODO: implement safe shutdown procedure
+	}
+}
+
+func (t *Trader) Buy(units float64) {
+	t.Log.Printf("Buy %f units", units)
+	t.closeOrdersAndPositions()
+	t.Broker.MarketOrder(t.Symbol, units, 0.0, 0.0)
+}
+
+func (t *Trader) Sell(units float64) {
+	t.Log.Printf("Sell %f units", units)
+	t.closeOrdersAndPositions()
+	t.Broker.MarketOrder(t.Symbol, -units, 0.0, 0.0)
+}
+
+func (t *Trader) closeOrdersAndPositions() {
+	for _, order := range t.Broker.OpenOrders() {
+		if order.Symbol() == t.Symbol {
+			order.Cancel()
+		}
+	}
+	for _, position := range t.Broker.OpenPositions() {
+		if position.Symbol() == t.Symbol {
+			position.Close()
+		}
 	}
 }
 
@@ -114,6 +155,6 @@ func NewTrader(config TraderConfig) *Trader {
 		Frequency:     config.Frequency,
 		CandlesToKeep: config.CandlesToKeep,
 		Log:           logger,
-		stats:         NewDataFrame(nil),
+		stats:         NewDataFrame(),
 	}
 }

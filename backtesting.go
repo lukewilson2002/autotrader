@@ -16,12 +16,19 @@ var (
 )
 
 func Backtest(trader *Trader) {
-	for !trader.EOF {
-		trader.Tick()
+	switch broker := trader.Broker.(type) {
+	case *TestBroker:
+		trader.Init() // Initialize the trader and strategy.
+		for !trader.EOF {
+			trader.Tick()    // Allow the trader to process the current candlesticks.
+			broker.Advance() // Give the trader access to the next candlestick.
+		}
+		log.Println("Backtest complete.")
+		log.Println("Stats:")
+		log.Println(trader.Stats().String())
+	default:
+		log.Fatalf("Backtesting is only supported with a TestBroker. Got %T", broker)
 	}
-	log.Println("Backtest complete.")
-	log.Println("Stats:")
-	log.Println(trader.Stats())
 }
 
 // TestBroker is a broker that can be used for testing. It implements the Broker interface and fulfills orders
@@ -54,11 +61,13 @@ func (b *TestBroker) CandleIndex() int {
 // Advance advances the test broker to the next candle in the input data. This should be done at the end of the
 // strategy loop.
 func (b *TestBroker) Advance() {
-	b.candleCount++
+	if b.candleCount < b.Data.Len() {
+		b.candleCount++
+	}
 }
 
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
-	if b.Data != nil && b.candleCount > b.Data.Len() { // We have data and we are at the end of it.
+	if b.Data != nil && b.candleCount >= b.Data.Len() { // We have data and we are at the end of it.
 		return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
 	} else if b.DataBroker != nil && b.Data == nil { // We have a data broker but no data.
 		// Fetch a lot of candles from the broker so we don't keep asking.
@@ -135,6 +144,26 @@ func (b *TestBroker) NAV() float64 {
 		}
 	}
 	return nav
+}
+
+func (b *TestBroker) OpenOrders() []Order {
+	orders := make([]Order, 0, len(b.orders))
+	for _, order := range b.orders {
+		if !order.Fulfilled() {
+			orders = append(orders, order)
+		}
+	}
+	return orders
+}
+
+func (b *TestBroker) OpenPositions() []Position {
+	positions := make([]Position, 0, len(b.positions))
+	for _, position := range b.positions {
+		if !position.Closed() {
+			positions = append(positions, position)
+		}
+	}
+	return positions
 }
 
 func (b *TestBroker) Orders() []Order {
