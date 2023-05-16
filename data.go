@@ -29,32 +29,47 @@ func EasyIndex(i, n int) int {
 type Series interface {
 	Signaler
 
+	// Reading data.
 	Copy(start, end int) Series
-	Name() string // Name returns the immutable name of the Series.
-	SetName(name string) Series
 	Len() int
-
-	// Statistical functions.
-	Rolling(period int) *RollingSeries
-
-	Push(val interface{}) Series
-
-	// Data access functions.
-	Value(i int) interface{}
-	ValueRange(start, end int) []interface{}
-	Values() []interface{} // Values is the same as ValueRange(0, -1).
+	Name() string // Name returns the immutable name of the Series.
 	Float(i int) float64
 	Int(i int) int64
 	Str(i int) string
 	Time(i int) time.Time
+	Value(i int) interface{}
+	ValueRange(start, end int) []interface{}
+	Values() []interface{} // Values is the same as ValueRange(0, -1).
+
+	// Writing data.
+	SetName(name string) Series
+	Push(val interface{}) Series
+
+	// Statistical functions.
+	Rolling(period int) *RollingSeries
 }
 
 type Frame interface {
+	// Reading data.
+	Contains(names ...string) bool // Contains returns true if the frame contains all the columns specified.
 	Copy(start, end int) Frame
 	Len() int
+	Names() []string
+	Series(name string) Series
 	String() string
+	Value(column string, i int) interface{}
+	Float(column string, i int) float64
+	Int(column string, i int) int64
+	Str(column string, i int) string
+	Time(column string, i int) time.Time
 
-	// Easy access functions.
+	// Writing data.
+	PushSeries(s ...Series) error
+	PushValues(values map[string]interface{}) error
+	RemoveSeries(name string)
+
+	// Easy access functions for common columns.
+	ContainsDOHLCV() bool // ContainsDOHLCV returns true if the frame contains all the columns: Date, Open, High, Low, Close, and Volume.
 	Date(i int) time.Time
 	Open(i int) float64
 	High(i int) float64
@@ -67,22 +82,7 @@ type Frame interface {
 	Lows() Series
 	Closes() Series
 	Volumes() Series
-	Contains(names ...string) bool // Contains returns true if the frame contains all the columns specified.
-	ContainsDOHLCV() bool          // ContainsDOHLCV returns true if the frame contains the columns: Date, Open, High, Low, Close, Volume.
-
 	PushCandle(date time.Time, open, high, low, close, volume float64) error
-	PushValues(values map[string]interface{}) error
-	PushSeries(s ...Series) error
-	RemoveSeries(name string)
-
-	Names() []string
-	Series(name string) Series
-	Value(column string, i int) interface{}
-	Float(column string, i int) float64
-	Int(column string, i int) int64
-	Str(column string, i int) string
-	// Time returns the value of the column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
-	Time(column string, i int) time.Time
 }
 
 // AppliedSeries is like Series, but it applies a function to each row of data before returning it.
