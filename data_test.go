@@ -3,6 +3,8 @@ package autotrader
 import (
 	"testing"
 	"time"
+
+	"github.com/rocketlaunchr/dataframe-go"
 )
 
 func newTestingDataFrame() *DataFrame {
@@ -11,6 +13,36 @@ func newTestingDataFrame() *DataFrame {
 		panic(err)
 	}
 	return data
+}
+
+func TestAppliedSeries(t *testing.T) {
+	// Test rolling average.
+	series := NewDataSeries(dataframe.NewSeriesFloat64("test", nil, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+
+	sma5Expected := []float64{1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8}
+	sma5 := (Series)(series.Rolling(5).Average()) // Take the 5 period moving average and cast it to Series.
+	if sma5.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", sma5.Len())
+	}
+	for i := 0; i < 10; i++ {
+		// Calling Float instead of Value is very important. Value will call the AppliedSeries.Value method
+		// while Float calls Series.Float which is what most people will use and is the most likely to be
+		// problematic as it is supposed to route through the DataSeries.value method.
+		if val := sma5.Float(i); !EqualApprox(val, sma5Expected[i]) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, sma5Expected[i], val)
+		}
+	}
+
+	ema5Expected := []float64{1, 1.3333333333333333, 1.8888888888888888, 2.5925925925925926, 3.3950617283950617, 4.395061728395062, 5.395061728395062, 6.395061728395062, 7.395061728395062, 8.395061728395062}
+	ema5 := (Series)(series.Rolling(5).EMA()) // Take the 5 period exponential moving average.
+	if ema5.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", ema5.Len())
+	}
+	for i := 0; i < 10; i++ {
+		if val := ema5.Float(i); !EqualApprox(val, ema5Expected[i]) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, ema5Expected[i], val)
+		}
+	}
 }
 
 func TestDataSeries(t *testing.T) {

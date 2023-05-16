@@ -1,6 +1,29 @@
 package autotrader
 
-import "golang.org/x/exp/constraints"
+import (
+	"golang.org/x/exp/constraints"
+)
+
+const floatComparisonTolerance = float64(1e-6)
+
+// EasyIndex returns an index to the `n` -length object that allows for negative indexing. For example, EasyIndex(-1, 5) returns 4. This is similar to Python's negative indexing. The return value may be less than zero if (-i) > n.
+func EasyIndex(i, n int) int {
+	if i < 0 {
+		return n + i
+	}
+	return i
+}
+
+func EqualApprox(a, b float64) bool {
+	return Abs(a-b) < floatComparisonTolerance
+}
+
+func Abs[T constraints.Integer | constraints.Float](a T) T {
+	if a < T(0) {
+		return -a
+	}
+	return a
+}
 
 func Min[T constraints.Ordered](a, b T) T {
 	if a < b {
