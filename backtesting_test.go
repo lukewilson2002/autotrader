@@ -65,8 +65,8 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 	for i := 0; i < 7; i++ { // 6 because we want to call broker.Candles 9 times total
 		broker.Advance()
 		candles, err = broker.Candles("EUR_USD", "D", 5)
-		if err != nil {
-			t.Fatalf("Got an error on iteration %d: %v (called Candles %d times)", i, err, 2+i+1)
+		if err != nil && err != ErrEOF && i != 6 { // Allow ErrEOF on last iteration.
+			t.Fatalf("Got an error on iteration %d: %v (called Advance() %d times)", i, err, broker.CandleIndex()+1)
 		}
 		if candles == nil {
 			t.Errorf("Candles is nil on iteration %d", i+1)

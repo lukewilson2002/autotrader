@@ -67,8 +67,15 @@ func (b *TestBroker) Advance() {
 }
 
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
+	start := Max(Max(b.candleCount, 1)-count, 0)
+	end := b.candleCount - 1
+
 	if b.Data != nil && b.candleCount >= b.Data.Len() { // We have data and we are at the end of it.
-		return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
+		if count >= b.Data.Len() { // We are asking for more data than we have.
+			return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
+		} else {
+			return b.Data.Copy(start, -1).(*DataFrame), ErrEOF
+		}
 	} else if b.DataBroker != nil && b.Data == nil { // We have a data broker but no data.
 		// Fetch a lot of candles from the broker so we don't keep asking.
 		candles, err := b.DataBroker.Candles(symbol, frequency, Max(count, 1000))
@@ -81,9 +88,6 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataF
 	}
 
 	// TODO: check if count > our rows if we are using a data broker and then fetch more data if so.
-
-	end := b.candleCount - 1
-	start := Max(Max(b.candleCount, 1)-count, 0)
 
 	return b.Data.Copy(start, end).(*DataFrame), nil
 }
