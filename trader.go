@@ -82,6 +82,7 @@ func (t *Trader) Init() {
 	t.stats = NewDataFrame(
 		NewDataSeries(dataframe.NewSeriesTime("Date", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Equity", nil)),
+		NewDataSeries(dataframe.NewSeriesFloat64("Drawdown", nil)),
 	)
 }
 
@@ -95,6 +96,15 @@ func (t *Trader) Tick() {
 	t.stats.PushValues(map[string]interface{}{
 		"Date":   t.data.Date(-1),
 		"Equity": t.Broker.NAV(),
+		"Drawdown": func() float64 {
+			var bal float64
+			if t.stats.Len() > 0 {
+				bal = t.stats.Value("Equity", 0).(float64) // Take starting balance
+			} else {
+				bal = t.Broker.NAV()
+			}
+			return Max(bal-t.Broker.NAV(), 0)
+		}(),
 	})
 }
 

@@ -33,11 +33,12 @@ func Backtest(trader *Trader) {
 
 		chart := charts.NewLine()
 		chart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-			Title:    "Backtest",
+			Title:    fmt.Sprintf("Backtest (%s)", time.Now().Format(time.DateTime)),
 			Subtitle: fmt.Sprintf("%s %s %T", trader.Symbol, trader.Frequency, trader.Strategy),
 		}))
 		chart.SetXAxis(seriesStringArray(trader.Stats().Dates())).
-			AddSeries("Equity", lineDataFromSeries(trader.Stats().Series("Equity")))
+			AddSeries("Equity", lineDataFromSeries(trader.Stats().Series("Equity"))).
+			AddSeries("Drawdown", lineDataFromSeries(trader.Stats().Series("Drawdown")))
 
 		// Draw the chart to a file.
 		f, err := os.Create("backtest.html")
@@ -65,11 +66,27 @@ func lineDataFromSeries(s Series) []opts.LineData {
 }
 
 func seriesStringArray(s Series) []string {
+	if s == nil || s.Len() == 0 {
+		return []string{}
+	}
+	first := true
 	data := make([]string, s.Len())
+	var dateLayout string
 	for i := 0; i < s.Len(); i++ {
 		switch val := s.Value(i).(type) {
 		case time.Time:
-			data[i] = val.Format(time.DateTime)
+			if first {
+				first = false
+				dateHead := s.Value(0).(time.Time)
+				dateTail := s.Value(-1).(time.Time)
+				diff := dateTail.Sub(dateHead)
+				if diff.Hours() > 24*365 {
+					dateLayout = time.DateOnly
+				} else {
+					dateLayout = time.DateTime
+				}
+			}
+			data[i] = val.Format(dateLayout)
 		case string:
 			data[i] = fmt.Sprintf("%q", val)
 		default:
