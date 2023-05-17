@@ -12,6 +12,12 @@ import (
 	"github.com/rocketlaunchr/dataframe-go"
 )
 
+// Performance (financial) reporting and statistics.
+type TraderStats struct {
+	Dated             *DataFrame
+	returnsThisCandle float64
+}
+
 // Trader acts as the primary interface to the broker and strategy. To the strategy, it provides all the information
 // about the current state of the market and the portfolio. To the broker, it provides the orders to be executed and
 // requests for the current state of the portfolio.
@@ -26,14 +32,14 @@ type Trader struct {
 
 	data  *DataFrame
 	sched *gocron.Scheduler
-	stats *DataFrame // Performance (financial) reporting and statistics.
+	stats *TraderStats
 }
 
 func (t *Trader) Data() *DataFrame {
 	return t.data
 }
 
-func (t *Trader) Stats() *DataFrame {
+func (t *Trader) Stats() *TraderStats {
 	return t.stats
 }
 
@@ -79,11 +85,16 @@ func (t *Trader) Run() {
 
 func (t *Trader) Init() {
 	t.Strategy.Init(t)
-	t.stats = NewDataFrame(
+	t.stats.Dated = NewDataFrame(
 		NewDataSeries(dataframe.NewSeriesTime("Date", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Equity", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Drawdown", nil)),
+		NewDataSeries(dataframe.NewSeriesFloat64("Returns", nil)),
 	)
+	t.Broker.SignalConnect("PositionClosed", func(args ...interface{}) {
+		position := args[0].(Position)
+		t.stats.returnsThisCandle += position.PL()
+	})
 }
 
 // Tick updates the current state of the market and runs the strategy.
@@ -93,19 +104,27 @@ func (t *Trader) Tick() {
 	t.Strategy.Next(t) // Run the strategy.
 
 	// Update the stats.
-	t.stats.PushValues(map[string]interface{}{
+	t.stats.Dated.PushValues(map[string]interface{}{
 		"Date":   t.data.Date(-1),
 		"Equity": t.Broker.NAV(),
 		"Drawdown": func() float64 {
 			var bal float64
-			if t.stats.Len() > 0 {
-				bal = t.stats.Float("Equity", 0) // Take starting balance
+			if t.stats.Dated.Len() > 0 {
+				bal = t.stats.Dated.Float("Equity", 0) // Take starting balance
 			} else {
-				bal = t.Broker.NAV()
+				bal = t.Broker.NAV() // Take current balance for first value
 			}
 			return Max(bal-t.Broker.NAV(), 0)
 		}(),
+		"Returns": func() interface{} {
+			if t.stats.returnsThisCandle != 0 {
+				return t.stats.returnsThisCandle
+			} else {
+				return nil
+			}
+		}(),
 	})
+	t.stats.returnsThisCandle = 0
 }
 
 func (t *Trader) fetchData() {
@@ -165,6 +184,6 @@ func NewTrader(config TraderConfig) *Trader {
 		Frequency:     config.Frequency,
 		CandlesToKeep: config.CandlesToKeep,
 		Log:           logger,
-		stats:         NewDataFrame(),
+		stats:         &TraderStats{},
 	}
 }

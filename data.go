@@ -35,6 +35,7 @@ type Series interface {
 
 	// Writing data.
 	SetName(name string) Series
+	SetValue(i int, val interface{}) Series
 	Push(val interface{}) Series
 
 	// Statistical functions.
@@ -321,6 +322,13 @@ func (s *DataSeries) Push(value interface{}) Series {
 	return s
 }
 
+func (s *DataSeries) SetValue(i int, val interface{}) Series {
+	if s.data != nil {
+		s.data.Update(EasyIndex(i, s.Len()), val)
+	}
+	return s
+}
+
 func (s *DataSeries) Value(i int) interface{} {
 	if s.data == nil {
 		return nil
@@ -335,10 +343,11 @@ func (s *DataSeries) ValueRange(start, end int) []interface{} {
 		return nil
 	}
 	start = EasyIndex(start, s.Len())
+	if end < 0 {
+		end = s.Len() - 1
+	}
 	if start < 0 || start >= s.Len() || end >= s.Len() || start > end {
 		return nil
-	} else if end < 0 {
-		end = s.Len() - 1
 	}
 
 	items := make([]interface{}, end-start+1)

@@ -12,6 +12,7 @@ import (
 	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"golang.org/x/exp/rand"
+	"golang.org/x/exp/slices"
 )
 
 var (
@@ -23,6 +24,7 @@ var (
 func Backtest(trader *Trader) {
 	switch broker := trader.Broker.(type) {
 	case *TestBroker:
+		rand.Seed(uint64(time.Now().UnixNano()))
 		trader.Init() // Initialize the trader and strategy.
 		start := time.Now()
 		for !trader.EOF {
@@ -30,20 +32,81 @@ func Backtest(trader *Trader) {
 			broker.Advance() // Give the trader access to the next candlestick.
 		}
 		log.Println("Backtest complete. Opening report...")
+		stats := trader.Stats()
 
 		page := components.NewPage()
 
-		// Create a new line chart based on account equity and add it to the page.
-		chart := charts.NewLine()
-		chart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-			Title:    fmt.Sprintf("Backtest (%s)", time.Now().Format(time.DateTime)),
-			Subtitle: fmt.Sprintf("%s %s %T  (took %.2f seconds)", trader.Symbol, trader.Frequency, trader.Strategy, time.Since(start).Seconds()),
+		// Create a new line balChart based on account equity and add it to the page.
+		balChart := charts.NewLine()
+		balChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+			Title:    "Balance",
+			Subtitle: fmt.Sprintf("%s %s %T  (took %.2f seconds) %s", trader.Symbol, trader.Frequency, trader.Strategy, time.Since(start).Seconds(), time.Now().Format(time.DateTime)),
 		}))
-		chart.SetXAxis(seriesStringArray(trader.Stats().Dates())).
-			AddSeries("Equity", lineDataFromSeries(trader.Stats().Series("Equity"))).
-			AddSeries("Drawdown", lineDataFromSeries(trader.Stats().Series("Drawdown")))
+		balChart.SetXAxis(seriesStringArray(stats.Dated.Dates())).
+			AddSeries("Equity", lineDataFromSeries(stats.Dated.Series("Equity"))).
+			AddSeries("Drawdown", lineDataFromSeries(stats.Dated.Series("Drawdown")))
 
-		page.AddCharts(chart)
+		// Sort Returns by value.
+		// Plot returns as a bar chart.
+		returnsSeries := stats.Dated.Series("Returns")
+		returns := make([]float64, 0, returnsSeries.Len())
+		// returns := stats.Dated.Series("Returns").Values()
+		// Remove nil values.
+		for i := 0; i < returnsSeries.Len(); i++ {
+			r := returnsSeries.Value(i)
+			if r != nil {
+				returns = append(returns, r.(float64))
+			}
+		}
+		// Sort the returns.
+		slices.Sort(returns)
+		// Create the X axis labels for the returns chart based on length of the returns slice.
+		returnsLabels := make([]int, len(returns))
+		for i := range returns {
+			returnsLabels[i] = i + 1
+		}
+		returnsBars := make([]opts.BarData, len(returns))
+		for i, r := range returns {
+			returnsBars[i] = opts.BarData{Value: r}
+			if r < 0 {
+				log.Println("Negative return:", r, "at index", i)
+			}
+		}
+		var avg float64
+		for _, r := range returns {
+			avg += r
+		}
+		avg /= float64(len(returns))
+		returnsAverage := make([]opts.LineData, len(returns))
+		for i := range returnsAverage {
+			returnsAverage[i] = opts.LineData{Value: avg}
+		}
+
+		returnsChart := charts.NewBar()
+		returnsChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+			Title:    "Returns",
+			Subtitle: fmt.Sprintf("Average: $%.2f", avg),
+		}))
+		returnsChart.SetXAxis(returnsLabels).
+			AddSeries("Returns", returnsBars)
+
+		returnsChartAvg := charts.NewLine()
+		returnsChartAvg.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+			Title: "Average Returns",
+		}))
+		returnsChartAvg.SetXAxis(returnsLabels).
+			AddSeries("Average", returnsAverage, func(s *charts.SingleSeries) {
+				s.LineStyle = &opts.LineStyle{
+					Width: 2,
+				}
+			})
+		returnsChart.Overlap(returnsChartAvg)
+
+		// TODO: Use Radar to display performance metrics.
+
+		// Add all the charts in the desired order.
+		page.PageTitle = "Backtest Report"
+		page.AddCharts(balChart, returnsChart)
 
 		// Draw the page to a file.
 		f, err := os.Create("backtest.html")
@@ -62,7 +125,21 @@ func Backtest(trader *Trader) {
 	}
 }
 
+func barDataFromSeries(s Series) []opts.BarData {
+	if s == nil || s.Len() == 0 {
+		return []opts.BarData{}
+	}
+	data := make([]opts.BarData, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		data[i] = opts.BarData{Value: s.Value(i)}
+	}
+	return data
+}
+
 func lineDataFromSeries(s Series) []opts.LineData {
+	if s == nil || s.Len() == 0 {
+		return []opts.LineData{}
+	}
 	data := make([]opts.LineData, s.Len())
 	for i := 0; i < s.Len(); i++ {
 		data[i] = opts.LineData{Value: s.Value(i)}
@@ -280,6 +357,7 @@ func (p *TestPosition) Close() error {
 	p.closed = true
 	p.closePrice = p.broker.Data.Close(p.broker.CandleIndex()) - p.broker.Spread // Get the last close price.
 	p.broker.Cash += p.Value()                                                   // Return the value of the position to the broker.
+	p.broker.SignalEmit("PositionClosed", p)
 	return nil
 }
 

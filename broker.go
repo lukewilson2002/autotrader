@@ -52,7 +52,11 @@ type Position interface {
 	Value() float64      // Value returns the value of the position at the current price.
 }
 
+// Broker is an interface that defines the methods that a broker must implement to report symbol data and place orders, etc. All Broker implementations must also implement the Signaler interface and emit the following functions when necessary:
+//
+//   - PositionClosed(Position) - Emitted after a position is closed either manually or automatically.
 type Broker interface {
+	Signaler
 	// Candles returns a dataframe of candles for the given symbol, frequency, and count by querying the broker.
 	Candles(symbol string, frequency string, count int) (*DataFrame, error)
 	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
