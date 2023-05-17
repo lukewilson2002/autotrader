@@ -68,9 +68,6 @@ func Backtest(trader *Trader) {
 		returnsBars := make([]opts.BarData, len(returns))
 		for i, r := range returns {
 			returnsBars[i] = opts.BarData{Value: r}
-			if r < 0 {
-				log.Println("Negative return:", r, "at index", i)
-			}
 		}
 		var avg float64
 		for _, r := range returns {
