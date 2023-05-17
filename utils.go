@@ -1,6 +1,9 @@
 package autotrader
 
 import (
+	"os/exec"
+	"runtime"
+
 	"golang.org/x/exp/constraints"
 )
 
@@ -45,4 +48,22 @@ func LeverageToMargin(leverage float64) float64 {
 
 func MarginToLeverage(margin float64) float64 {
 	return 1 / margin
+}
+
+// Open opens the specified URL in the default browser of the user.
+func Open(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start"}
+	case "darwin":
+		cmd = "open"
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = "xdg-open"
+	}
+	args = append(args, url)
+	return exec.Command(cmd, args...).Start()
 }

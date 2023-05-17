@@ -2,10 +2,14 @@ package autotrader
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"time"
 
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
 	"golang.org/x/exp/rand"
 )
 
@@ -26,9 +30,53 @@ func Backtest(trader *Trader) {
 		log.Println("Backtest complete.")
 		log.Println("Stats:")
 		log.Println(trader.Stats().String())
+
+		chart := charts.NewLine()
+		chart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+			Title:    "Backtest",
+			Subtitle: fmt.Sprintf("%s %s %T", trader.Symbol, trader.Frequency, trader.Strategy),
+		}))
+		chart.SetXAxis(seriesStringArray(trader.Stats().Dates())).
+			AddSeries("Equity", lineDataFromSeries(trader.Stats().Series("Equity")))
+
+		// Draw the chart to a file.
+		f, err := os.Create("backtest.html")
+		if err != nil {
+			panic(err)
+		}
+		chart.Render(f)
+		f.Close()
+
+		// Open the chart in the default browser.
+		if err := Open("backtest.html"); err != nil {
+			panic(err)
+		}
 	default:
 		log.Fatalf("Backtesting is only supported with a TestBroker. Got %T", broker)
 	}
+}
+
+func lineDataFromSeries(s Series) []opts.LineData {
+	data := make([]opts.LineData, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		data[i] = opts.LineData{Value: s.Value(i)}
+	}
+	return data
+}
+
+func seriesStringArray(s Series) []string {
+	data := make([]string, s.Len())
+	for i := 0; i < s.Len(); i++ {
+		switch val := s.Value(i).(type) {
+		case time.Time:
+			data[i] = val.Format(time.DateTime)
+		case string:
+			data[i] = fmt.Sprintf("%q", val)
+		default:
+			data[i] = fmt.Sprintf("%v", val)
+		}
+	}
+	return data
 }
 
 // TestBroker is a broker that can be used for testing. It implements the Broker interface and fulfills orders

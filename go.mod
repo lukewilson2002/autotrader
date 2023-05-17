@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	github.com/go-echarts/go-echarts/v2 v2.2.6 // indirect
 	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/guptarohit/asciigraph v0.5.1 // indirect
 	github.com/mattn/go-runewidth v0.0.7 // indirect
