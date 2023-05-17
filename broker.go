@@ -61,6 +61,7 @@ type Broker interface {
 	Candles(symbol string, frequency string, count int) (*DataFrame, error)
 	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.
+	PL() float64  // PL returns the profit or loss of the account.
 	OpenOrders() []Order
 	OpenPositions() []Position
 	// Orders returns a slice of orders that have been placed with the broker. If an order has been canceled or

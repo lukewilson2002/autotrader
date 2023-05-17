@@ -88,6 +88,7 @@ func (t *Trader) Init() {
 	t.stats.Dated = NewDataFrame(
 		NewDataSeries(dataframe.NewSeriesTime("Date", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Equity", nil)),
+		NewDataSeries(dataframe.NewSeriesFloat64("Profit", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Drawdown", nil)),
 		NewDataSeries(dataframe.NewSeriesFloat64("Returns", nil)),
 	)
@@ -104,9 +105,10 @@ func (t *Trader) Tick() {
 	t.Strategy.Next(t) // Run the strategy.
 
 	// Update the stats.
-	t.stats.Dated.PushValues(map[string]interface{}{
+	err := t.stats.Dated.PushValues(map[string]interface{}{
 		"Date":   t.data.Date(-1),
 		"Equity": t.Broker.NAV(),
+		"Profit": t.Broker.PL(),
 		"Drawdown": func() float64 {
 			var bal float64
 			if t.stats.Dated.Len() > 0 {
@@ -124,6 +126,9 @@ func (t *Trader) Tick() {
 			}
 		}(),
 	})
+	if err != nil {
+		log.Printf("error pushing values to stats dataframe: %v\n", err.Error())
+	}
 	t.stats.returnsThisCandle = 0
 }
 

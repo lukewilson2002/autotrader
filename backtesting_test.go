@@ -1,7 +1,6 @@
 package autotrader
 
 import (
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -83,7 +82,7 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 func TestBacktestingBrokerFunctions(t *testing.T) {
 	broker := NewTestBroker(nil, nil, 100_000, 20, 0, 0)
 
-	if broker.NAV() != 100_000 {
+	if !EqualApprox(broker.NAV(), 100_000) {
 		t.Errorf("Expected NAV to be 100_000, got %f", broker.NAV())
 	}
 }
@@ -155,15 +154,15 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 		t.Errorf("Expected take profit to be 0, got %f", position.TakeProfit())
 	}
 
-	if broker.NAV() != 100_000 { // NAV should not change until the next candle
+	if !EqualApprox(broker.NAV(), 100_000) { // NAV should not change until the next candle
 		t.Errorf("Expected NAV to be 100_000, got %f", broker.NAV())
 	}
 
 	broker.Advance()                       // Advance broker to the next candle
-	if math.Round(position.PL()) != 2500 { // (1.2-1.15) * 50_000 = 2500
+	if !EqualApprox(position.PL(), 2500) { // (1.2-1.15) * 50_000 = 2500
 		t.Errorf("Expected position PL to be 2500, got %f", position.PL())
 	}
-	if math.Round(broker.NAV()) != 102_500 {
+	if !EqualApprox(broker.NAV(), 102_500) {
 		t.Errorf("Expected NAV to be 102_500, got %f", broker.NAV())
 	}
 
@@ -173,7 +172,10 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 		t.Error("Expected position to be closed")
 	}
 	broker.Advance()
-	if broker.NAV() != 102_500 {
+	if !EqualApprox(broker.NAV(), 102_500) {
 		t.Errorf("Expected NAV to still be 102_500, got %f", broker.NAV())
+	}
+	if !EqualApprox(broker.PL(), 2500) {
+		t.Errorf("Expected broker PL to be 2500, got %f", broker.PL())
 	}
 }

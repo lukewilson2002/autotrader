@@ -31,7 +31,7 @@ func Backtest(trader *Trader) {
 			trader.Tick()    // Allow the trader to process the current candlesticks.
 			broker.Advance() // Give the trader access to the next candlestick.
 		}
-		log.Println("Backtest complete. Opening report...")
+		log.Printf("Backtest completed on %d candles. Opening report...\n", trader.Stats().Dated.Len())
 		stats := trader.Stats()
 
 		page := components.NewPage()
@@ -40,11 +40,22 @@ func Backtest(trader *Trader) {
 		balChart := charts.NewLine()
 		balChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
 			Title:    "Balance",
-			Subtitle: fmt.Sprintf("%s %s %T  (took %.2f seconds) %s", trader.Symbol, trader.Frequency, trader.Strategy, time.Since(start).Seconds(), time.Now().Format(time.DateTime)),
+			Subtitle: fmt.Sprintf("%s %s %T  %s (took %.2f seconds)", trader.Symbol, trader.Frequency, trader.Strategy, time.Now().Format(time.DateTime), time.Since(start).Seconds()),
+		}), charts.WithTooltipOpts(opts.Tooltip{
+			Show:      true,
+			Trigger:   "axis",
+			TriggerOn: "mousemove|click",
+		}), charts.WithYAxisOpts(opts.YAxis{
+			AxisLabel: &opts.AxisLabel{
+				Show:      true,
+				Formatter: "${value}",
+			},
 		}))
 		balChart.SetXAxis(seriesStringArray(stats.Dated.Dates())).
-			AddSeries("Equity", lineDataFromSeries(stats.Dated.Series("Equity"))).
-			AddSeries("Drawdown", lineDataFromSeries(stats.Dated.Series("Drawdown")))
+			AddSeries("Equity", lineDataFromSeries(stats.Dated.Series("Equity")), func(s *charts.SingleSeries) {
+			}).
+			AddSeries("Profit", lineDataFromSeries(stats.Dated.Series("Profit")))
+			// AddSeries("Drawdown", lineDataFromSeries(stats.Dated.Series("Drawdown")))
 
 		// Sort Returns by value.
 		// Plot returns as a bar chart.
@@ -83,6 +94,11 @@ func Backtest(trader *Trader) {
 		returnsChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
 			Title:    "Returns",
 			Subtitle: fmt.Sprintf("Average: $%.2f", avg),
+		}), charts.WithYAxisOpts(opts.YAxis{
+			AxisLabel: &opts.AxisLabel{
+				Show:      true,
+				Formatter: "${value}",
+			},
 		}))
 		returnsChart.SetXAxis(returnsLabels).
 			AddSeries("Returns", returnsBars)
@@ -122,16 +138,16 @@ func Backtest(trader *Trader) {
 	}
 }
 
-func barDataFromSeries(s Series) []opts.BarData {
-	if s == nil || s.Len() == 0 {
-		return []opts.BarData{}
-	}
-	data := make([]opts.BarData, s.Len())
-	for i := 0; i < s.Len(); i++ {
-		data[i] = opts.BarData{Value: s.Value(i)}
-	}
-	return data
-}
+// func barDataFromSeries(s Series) []opts.BarData {
+// 	if s == nil || s.Len() == 0 {
+// 		return []opts.BarData{}
+// 	}
+// 	data := make([]opts.BarData, s.Len())
+// 	for i := 0; i < s.Len(); i++ {
+// 		data[i] = opts.BarData{Value: s.Value(i)}
+// 	}
+// 	return data
+// }
 
 func lineDataFromSeries(s Series) []opts.LineData {
 	if s == nil || s.Len() == 0 {
@@ -139,7 +155,7 @@ func lineDataFromSeries(s Series) []opts.LineData {
 	}
 	data := make([]opts.LineData, s.Len())
 	for i := 0; i < s.Len(); i++ {
-		data[i] = opts.LineData{Value: s.Value(i)}
+		data[i] = opts.LineData{Value: Round(s.Value(i).(float64), 2)}
 	}
 	return data
 }
@@ -292,6 +308,14 @@ func (b *TestBroker) NAV() float64 {
 		}
 	}
 	return nav
+}
+
+func (b *TestBroker) PL() float64 {
+	var pl float64
+	for _, position := range b.positions {
+		pl += position.PL()
+	}
+	return pl
 }
 
 func (b *TestBroker) OpenOrders() []Order {
