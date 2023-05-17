@@ -99,7 +99,7 @@ func (t *Trader) Tick() {
 		"Drawdown": func() float64 {
 			var bal float64
 			if t.stats.Len() > 0 {
-				bal = t.stats.Value("Equity", 0).(float64) // Take starting balance
+				bal = t.stats.Float("Equity", 0) // Take starting balance
 			} else {
 				bal = t.Broker.NAV()
 			}

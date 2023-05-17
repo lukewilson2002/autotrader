@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
 	"github.com/go-echarts/go-echarts/v2/opts"
 	"golang.org/x/exp/rand"
 )
@@ -23,29 +24,33 @@ func Backtest(trader *Trader) {
 	switch broker := trader.Broker.(type) {
 	case *TestBroker:
 		trader.Init() // Initialize the trader and strategy.
+		start := time.Now()
 		for !trader.EOF {
 			trader.Tick()    // Allow the trader to process the current candlesticks.
 			broker.Advance() // Give the trader access to the next candlestick.
 		}
-		log.Println("Backtest complete.")
-		log.Println("Stats:")
-		log.Println(trader.Stats().String())
+		log.Println("Backtest complete. Opening report...")
 
+		page := components.NewPage()
+
+		// Create a new line chart based on account equity and add it to the page.
 		chart := charts.NewLine()
 		chart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
 			Title:    fmt.Sprintf("Backtest (%s)", time.Now().Format(time.DateTime)),
-			Subtitle: fmt.Sprintf("%s %s %T", trader.Symbol, trader.Frequency, trader.Strategy),
+			Subtitle: fmt.Sprintf("%s %s %T  (took %.2f seconds)", trader.Symbol, trader.Frequency, trader.Strategy, time.Since(start).Seconds()),
 		}))
 		chart.SetXAxis(seriesStringArray(trader.Stats().Dates())).
 			AddSeries("Equity", lineDataFromSeries(trader.Stats().Series("Equity"))).
 			AddSeries("Drawdown", lineDataFromSeries(trader.Stats().Series("Drawdown")))
 
-		// Draw the chart to a file.
+		page.AddCharts(chart)
+
+		// Draw the page to a file.
 		f, err := os.Create("backtest.html")
 		if err != nil {
 			panic(err)
 		}
-		chart.Render(f)
+		page.Render(f)
 		f.Close()
 
 		// Open the chart in the default browser.

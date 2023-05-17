@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-
 	auto "github.com/fivemoreminix/autotrader"
 )
 
@@ -16,7 +14,6 @@ func (s *SMAStrategy) Init(_ *auto.Trader) {
 func (s *SMAStrategy) Next(t *auto.Trader) {
 	sma1 := t.Data().Closes().Rolling(s.period1).Mean()
 	sma2 := t.Data().Closes().Rolling(s.period2).Mean()
-	log.Println(t.Data().Close(-1) - sma1.Float(-1))
 	// If the shorter SMA crosses above the longer SMA, buy.
 	if crossover(sma1, sma2) {
 		t.Buy(1000)
