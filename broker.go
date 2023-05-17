@@ -58,8 +58,8 @@ type Position interface {
 type Broker interface {
 	Signaler
 	// Candles returns a dataframe of candles for the given symbol, frequency, and count by querying the broker.
-	Candles(symbol string, frequency string, count int) (*DataFrame, error)
-	MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error)
+	Candles(symbol, frequency string, count int) (*DataFrame, error)
+	MarketOrder(symbol string, units, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.
 	PL() float64  // PL returns the profit or loss of the account.
 	OpenOrders() []Order

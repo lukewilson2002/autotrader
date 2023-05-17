@@ -21,6 +21,8 @@ var (
 	ErrPositionClosed = errors.New("position closed")
 )
 
+var _ Broker = (*TestBroker)(nil) // Compile-time interface check.
+
 func Backtest(trader *Trader) {
 	switch broker := trader.Broker.(type) {
 	case *TestBroker:

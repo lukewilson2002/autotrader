@@ -78,7 +78,7 @@ type Frame interface {
 	Lows() Series
 	Closes() Series
 	Volumes() Series
-	PushCandle(date time.Time, open, high, low, close, volume float64) error
+	PushCandle(date time.Time, open, high, low, close float64, volume int64) error
 }
 
 // AppliedSeries is like Series, but it applies a function to each row of data before returning it.
@@ -439,6 +439,25 @@ type DataFrame struct {
 	// data *df.DataFrame // DataFrame with a Date, Open, High, Low, Close, and Volume column.
 }
 
+func NewDataFrame(series ...Series) *DataFrame {
+	d := &DataFrame{}
+	d.PushSeries(series...)
+	return d
+}
+
+// NewDOHLCVDataFrame returns a DataFrame with empty Date, Open, High, Low, Close, and Volume columns.
+// Use the PushCandle method to add candlesticks in an easy and type-safe way.
+func NewDOHLCVDataFrame() *DataFrame {
+	return NewDataFrame(
+		NewDataSeries(df.NewSeriesTime("Date", nil)),
+		NewDataSeries(df.NewSeriesFloat64("Open", nil)),
+		NewDataSeries(df.NewSeriesFloat64("High", nil)),
+		NewDataSeries(df.NewSeriesFloat64("Low", nil)),
+		NewDataSeries(df.NewSeriesFloat64("Close", nil)),
+		NewDataSeries(df.NewSeriesInt64("Volume", nil)),
+	)
+}
+
 // Copy copies the DataFrame from start to end (inclusive). If end is -1, it will copy to the end of the DataFrame. If start is out of bounds, nil is returned.
 func (d *DataFrame) Copy(start, end int) Frame {
 	out := &DataFrame{}
@@ -468,6 +487,9 @@ func (d *DataFrame) Len() int {
 }
 
 func (d *DataFrame) String() string {
+	if d == nil {
+		return fmt.Sprintf("%T[nil]", d)
+	}
 	names := d.Names() // Defines the order of the columns.
 	series := make([]Series, len(names))
 	for i, name := range names {
@@ -596,16 +618,16 @@ func (d *DataFrame) ContainsDOHLCV() bool {
 	return d.Contains("Date", "Open", "High", "Low", "Close", "Volume")
 }
 
-func (d *DataFrame) PushCandle(date time.Time, open, high, low, close, volume float64) error {
+func (d *DataFrame) PushCandle(date time.Time, open, high, low, close float64, volume int64) error {
 	if len(d.series) == 0 {
-		d.PushSeries([]Series{
+		d.PushSeries(
 			NewDataSeries(df.NewSeriesTime("Date", nil, date)),
 			NewDataSeries(df.NewSeriesFloat64("Open", nil, open)),
 			NewDataSeries(df.NewSeriesFloat64("High", nil, high)),
 			NewDataSeries(df.NewSeriesFloat64("Low", nil, low)),
 			NewDataSeries(df.NewSeriesFloat64("Close", nil, close)),
-			NewDataSeries(df.NewSeriesFloat64("Volume", nil, volume)),
-		}...)
+			NewDataSeries(df.NewSeriesInt64("Volume", nil, volume)),
+		)
 		return nil
 	}
 	if !d.ContainsDOHLCV() {
@@ -771,12 +793,6 @@ func (d *DataFrame) Time(column string, i int) time.Time {
 	default:
 		return time.Time{}
 	}
-}
-
-func NewDataFrame(series ...Series) *DataFrame {
-	d := &DataFrame{}
-	d.PushSeries(series...)
-	return d
 }
 
 type DataCSVLayout struct {
