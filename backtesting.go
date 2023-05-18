@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -33,31 +34,65 @@ func Backtest(trader *Trader) {
 			trader.Tick()    // Allow the trader to process the current candlesticks.
 			broker.Advance() // Give the trader access to the next candlestick.
 		}
+		trader.closeOrdersAndPositions() // Close any outstanding trades now.
+
 		log.Printf("Backtest completed on %d candles. Opening report...\n", trader.Stats().Dated.Len())
 		stats := trader.Stats()
+
+		// Pick a datetime layout based on the frequency.
+		dateLayout := time.DateTime
+		if strings.Contains(trader.Frequency, "S") { // Seconds
+			dateLayout = "15:04:05"
+		} else if strings.Contains(trader.Frequency, "H") { // Hours
+			dateLayout = "2006-01-02 15:04"
+		} else if strings.Contains(trader.Frequency, "D") || trader.Frequency == "W" { // Days or Weeks
+			dateLayout = time.DateOnly
+		} else if trader.Frequency == "M" { // Months
+			dateLayout = "2006-01"
+		} else if strings.Contains(trader.Frequency, "M") { // Minutes
+			dateLayout = "01-02 15:04"
+		}
 
 		page := components.NewPage()
 
 		// Create a new line balChart based on account equity and add it to the page.
 		balChart := charts.NewLine()
-		balChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-			Title:    "Balance",
-			Subtitle: fmt.Sprintf("%s %s %T  %s (took %.2f seconds)", trader.Symbol, trader.Frequency, trader.Strategy, time.Now().Format(time.DateTime), time.Since(start).Seconds()),
-		}), charts.WithTooltipOpts(opts.Tooltip{
-			Show:      true,
-			Trigger:   "axis",
-			TriggerOn: "mousemove|click",
-		}), charts.WithYAxisOpts(opts.YAxis{
-			AxisLabel: &opts.AxisLabel{
+		balChart.SetGlobalOptions(
+			charts.WithTitleOpts(opts.Title{
+				Title:    "Balance",
+				Subtitle: fmt.Sprintf("%s %s %T  %s (took %.2f seconds)", trader.Symbol, trader.Frequency, trader.Strategy, time.Now().Format(time.DateTime), time.Since(start).Seconds()),
+			}),
+			charts.WithTooltipOpts(opts.Tooltip{
 				Show:      true,
-				Formatter: "${value}",
-			},
-		}))
-		balChart.SetXAxis(seriesStringArray(stats.Dated.Dates())).
-			AddSeries("Equity", lineDataFromSeries(stats.Dated.Series("Equity")), func(s *charts.SingleSeries) {
-			}).
-			AddSeries("Profit", lineDataFromSeries(stats.Dated.Series("Profit")))
-			// AddSeries("Drawdown", lineDataFromSeries(stats.Dated.Series("Drawdown")))
+				Trigger:   "axis",
+				TriggerOn: "mousemove|click",
+			}),
+			charts.WithYAxisOpts(opts.YAxis{
+				AxisLabel: &opts.AxisLabel{
+					Show:      true,
+					Formatter: "${value}",
+				},
+			}),
+			charts.WithLegendOpts(opts.Legend{
+				Show:     true,
+				Selected: map[string]bool{"Equity": false, "Profit": true},
+			}))
+		balChart.SetXAxis(seriesStringArray(stats.Dated.Dates(), dateLayout)).
+			AddSeries("Equity", lineDataFromSeries(stats.Dated.Series("Equity"))).
+			SetSeriesOptions(
+				charts.WithMarkPointNameTypeItemOpts(
+					opts.MarkPointNameTypeItem{Name: "Peak", Type: "max", ItemStyle: &opts.ItemStyle{
+						Color: balChart.Colors[1],
+					}},
+					opts.MarkPointNameTypeItem{Name: "Drawdown", Type: "min", ItemStyle: &opts.ItemStyle{
+						Color: balChart.Colors[3],
+					}},
+				),
+			)
+		balChart.AddSeries("Profit", lineDataFromSeries(stats.Dated.Series("Profit")))
+
+		// Create a new kline chart based on the candlesticks and add it to the page.
+		kline := newKline(trader.data, stats.Dated.Series("Trades"), dateLayout)
 
 		// Sort Returns by value.
 		// Plot returns as a bar chart.
@@ -93,15 +128,17 @@ func Backtest(trader *Trader) {
 		}
 
 		returnsChart := charts.NewBar()
-		returnsChart.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-			Title:    "Returns",
-			Subtitle: fmt.Sprintf("Average: $%.2f", avg),
-		}), charts.WithYAxisOpts(opts.YAxis{
-			AxisLabel: &opts.AxisLabel{
-				Show:      true,
-				Formatter: "${value}",
-			},
-		}))
+		returnsChart.SetGlobalOptions(
+			charts.WithTitleOpts(opts.Title{
+				Title:    "Returns",
+				Subtitle: fmt.Sprintf("Average: $%.2f", avg),
+			}),
+			charts.WithYAxisOpts(opts.YAxis{
+				AxisLabel: &opts.AxisLabel{
+					Show:      true,
+					Formatter: "${value}",
+				},
+			}))
 		returnsChart.SetXAxis(returnsLabels).
 			AddSeries("Returns", returnsBars)
 
@@ -121,7 +158,7 @@ func Backtest(trader *Trader) {
 
 		// Add all the charts in the desired order.
 		page.PageTitle = "Backtest Report"
-		page.AddCharts(balChart, returnsChart)
+		page.AddCharts(balChart, kline, returnsChart)
 
 		// Draw the page to a file.
 		f, err := os.Create("backtest.html")
@@ -140,16 +177,85 @@ func Backtest(trader *Trader) {
 	}
 }
 
-// func barDataFromSeries(s Series) []opts.BarData {
-// 	if s == nil || s.Len() == 0 {
-// 		return []opts.BarData{}
-// 	}
-// 	data := make([]opts.BarData, s.Len())
-// 	for i := 0; i < s.Len(); i++ {
-// 		data[i] = opts.BarData{Value: s.Value(i)}
-// 	}
-// 	return data
-// }
+func newKline(dohlcv Frame, trades Series, dateLayout string) *charts.Kline {
+	kline := charts.NewKLine()
+
+	x := make([]string, dohlcv.Len())
+	y := make([]opts.KlineData, dohlcv.Len())
+	for i := 0; i < dohlcv.Len(); i++ {
+		x[i] = dohlcv.Date(i).Format(dateLayout)
+		y[i] = opts.KlineData{Value: [4]float64{
+			dohlcv.Open(i),
+			dohlcv.Close(i),
+			dohlcv.Low(i),
+			dohlcv.High(i),
+		}}
+	}
+
+	marks := make([]opts.MarkPointNameCoordItem, 0)
+	for i := 0; i < trades.Len(); i++ {
+		if slice := trades.Value(i); slice != nil {
+			for _, trade := range slice.([]TradeStat) {
+				color := "green"
+				rotation := float32(0)
+				if trade.Units < 0 {
+					color = "red"
+					rotation = 180
+				}
+				if trade.Exit {
+					color = "black"
+				}
+				marks = append(marks, opts.MarkPointNameCoordItem{
+					Name:       "Trade",
+					Value:      fmt.Sprintf("%v units", trade.Units),
+					Coordinate: []interface{}{x[i], y[i].Value.([4]float64)[1]},
+					Label: &opts.Label{
+						Show:     true,
+						Position: "inside",
+					},
+					ItemStyle: &opts.ItemStyle{
+						Color: color,
+					},
+					Symbol:       "arrow",
+					SymbolRotate: rotation,
+					SymbolSize:   25,
+				})
+			}
+		}
+	}
+
+	kline.SetGlobalOptions(
+		charts.WithTitleOpts(opts.Title{
+			Title:    "Trades",
+			Subtitle: fmt.Sprintf("Showing %d candles", dohlcv.Len()),
+		}),
+		charts.WithXAxisOpts(opts.XAxis{
+			SplitNumber: 20,
+		}),
+		charts.WithYAxisOpts(opts.YAxis{
+			Scale: true,
+		}),
+		charts.WithTooltipOpts(opts.Tooltip{ // Enable seeing details on hover.
+			Show:      true,
+			Trigger:   "axis",
+			TriggerOn: "mousemove|click",
+		}),
+		charts.WithDataZoomOpts(opts.DataZoom{ // Support zooming with scroll wheel.
+			Type:       "inside",
+			Start:      0,
+			End:        100,
+			XAxisIndex: []int{0},
+		}),
+		charts.WithDataZoomOpts(opts.DataZoom{ // Support zooming with bottom slider.
+			Type:       "slider",
+			Start:      0,
+			End:        100,
+			XAxisIndex: []int{0},
+		}),
+	)
+	kline.SetXAxis(x).AddSeries("Price Action", y, charts.WithMarkPointNameCoordItemOpts(marks...))
+	return kline
+}
 
 func lineDataFromSeries(s Series) []opts.LineData {
 	if s == nil || s.Len() == 0 {
@@ -162,27 +268,14 @@ func lineDataFromSeries(s Series) []opts.LineData {
 	return data
 }
 
-func seriesStringArray(s Series) []string {
+func seriesStringArray(s Series, dateLayout string) []string {
 	if s == nil || s.Len() == 0 {
 		return []string{}
 	}
-	first := true
 	data := make([]string, s.Len())
-	var dateLayout string
 	for i := 0; i < s.Len(); i++ {
 		switch val := s.Value(i).(type) {
 		case time.Time:
-			if first {
-				first = false
-				dateHead := s.Value(0).(time.Time)
-				dateTail := s.Value(-1).(time.Time)
-				diff := dateTail.Sub(dateHead)
-				if diff.Hours() > 24*365 {
-					dateLayout = time.DateOnly
-				} else {
-					dateLayout = time.DateTime
-				}
-			}
 			data[i] = val.Format(dateLayout)
 		case string:
 			data[i] = fmt.Sprintf("%q", val)

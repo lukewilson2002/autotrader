@@ -11,12 +11,6 @@ import (
 	"github.com/go-co-op/gocron"
 )
 
-// Performance (financial) reporting and statistics.
-type TraderStats struct {
-	Dated             *DataFrame
-	returnsThisCandle float64
-}
-
 // Trader acts as the primary interface to the broker and strategy. To the strategy, it provides all the information
 // about the current state of the market and the portfolio. To the broker, it provides the orders to be executed and
 // requests for the current state of the portfolio.
@@ -36,6 +30,18 @@ type Trader struct {
 
 func (t *Trader) Data() *DataFrame {
 	return t.data
+}
+
+type TradeStat struct {
+	Units float64 // Units is the signed number of units bought or sold.
+	Exit  bool    // Exit is true if the trade was to exit a previous position.
+}
+
+// Performance (financial) reporting and statistics.
+type TraderStats struct {
+	Dated             *DataFrame
+	returnsThisCandle float64
+	tradesThisCandle  []TradeStat
 }
 
 func (t *Trader) Stats() *TraderStats {
@@ -90,8 +96,10 @@ func (t *Trader) Init() {
 		NewDataSeries("Profit"),
 		NewDataSeries("Drawdown"),
 		NewDataSeries("Returns"),
+		NewDataSeries("Trades"), // []float64 representing the number of units traded positive for buy, negative for sell.
 	)
-	t.Broker.SignalConnect("PositionClosed", t, func(args ...interface{}) {
+	t.stats.tradesThisCandle = make([]TradeStat, 0, 2)
+	t.Broker.SignalConnect("PositionClosed", t, func(args ...any) {
 		position := args[0].(Position)
 		t.stats.returnsThisCandle += position.PL()
 	})
@@ -104,7 +112,7 @@ func (t *Trader) Tick() {
 	t.Strategy.Next(t) // Run the strategy.
 
 	// Update the stats.
-	err := t.stats.Dated.PushValues(map[string]interface{}{
+	err := t.stats.Dated.PushValues(map[string]any{
 		"Date":   t.data.Date(-1),
 		"Equity": t.Broker.NAV(),
 		"Profit": t.Broker.PL(),
@@ -117,12 +125,21 @@ func (t *Trader) Tick() {
 			}
 			return Max(bal-t.Broker.NAV(), 0)
 		}(),
-		"Returns": func() interface{} {
+		"Returns": func() any {
 			if t.stats.returnsThisCandle != 0 {
 				return t.stats.returnsThisCandle
 			} else {
 				return nil
 			}
+		}(),
+		"Trades": func() any {
+			if len(t.stats.tradesThisCandle) == 0 {
+				return nil
+			}
+			trades := make([]TradeStat, len(t.stats.tradesThisCandle))
+			copy(trades, t.stats.tradesThisCandle)
+			t.stats.tradesThisCandle = t.stats.tradesThisCandle[:0]
+			return trades
 		}(),
 	})
 	if err != nil {
@@ -146,26 +163,31 @@ func (t *Trader) fetchData() {
 }
 
 func (t *Trader) Buy(units float64) {
-	t.Log.Printf("Buy %f units", units)
 	t.closeOrdersAndPositions()
+	t.Log.Printf("Buy %f units", units)
 	t.Broker.MarketOrder(t.Symbol, units, 0.0, 0.0)
+	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{units, false})
 }
 
 func (t *Trader) Sell(units float64) {
-	t.Log.Printf("Sell %f units", units)
 	t.closeOrdersAndPositions()
+	t.Log.Printf("Sell %f units", units)
 	t.Broker.MarketOrder(t.Symbol, -units, 0.0, 0.0)
+	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{-units, false})
 }
 
 func (t *Trader) closeOrdersAndPositions() {
 	for _, order := range t.Broker.OpenOrders() {
 		if order.Symbol() == t.Symbol {
+			t.Log.Printf("Cancelling order %s (%f units)", order.Id(), order.Units())
 			order.Cancel()
 		}
 	}
 	for _, position := range t.Broker.OpenPositions() {
 		if position.Symbol() == t.Symbol {
+			t.Log.Printf("Closing position %s (%f units, %f PL)", position.Id(), position.Units(), position.PL())
 			position.Close()
+			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{position.Units(), true})
 		}
 	}
 }
