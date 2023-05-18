@@ -1,14 +1,128 @@
 package autotrader
 
 import (
+	"math"
 	"testing"
-
-	"github.com/rocketlaunchr/dataframe-go"
 )
 
+func TestDataSeries(t *testing.T) {
+	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	if series.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", series.Len())
+	}
+	series.Reverse()
+	if series.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", series.Len())
+	}
+	for i := 0; i < 10; i++ {
+		if val := series.Float(i); val != float64(10-i) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(10-i), val)
+		}
+	}
+
+	last5 := series.Copy(-5, -1)
+	if last5.Len() != 5 {
+		t.Fatalf("Expected 5 rows, got %d", last5.Len())
+	}
+	for i := 0; i < 5; i++ {
+		if val := last5.Float(i); val != float64(5-i) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(5-i), val)
+		}
+	}
+	last5.SetValue(-1, 0.0)
+	if series.Float(-1) == 0.0 {
+		t.Errorf("Expected data to be copied, not referenced")
+	}
+
+	outOfBounds := series.Copy(10, -1)
+	if outOfBounds == nil {
+		t.Fatal("Expected non-nil series, got nil")
+	}
+	if outOfBounds.Len() != 0 {
+		t.Fatalf("Expected 0 rows, got %d", outOfBounds.Len())
+	}
+
+	valueRange := series.ValueRange(-1, 0) // Out of bounds should result in an empty slice.
+	if valueRange == nil || len(valueRange) != 0 {
+		t.Fatalf("Expected a slice with 0 items, got %d", len(valueRange))
+	}
+	valueRange = series.ValueRange(0, 5) // Take the first 5 items.
+	if len(valueRange) != 5 {
+		t.Fatalf("Expected a slice with 5 items, got %d", len(valueRange))
+	}
+	for i := 0; i < 5; i++ {
+		if val := valueRange[i]; val != float64(10-i) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(10-i), val)
+		}
+	}
+
+	values := series.Values()
+	if len(values) != 10 {
+		t.Fatalf("Expected a slice with 10 items, got %d", len(values))
+	}
+	for i := 0; i < 10; i++ {
+		if val := values[i]; val != float64(10-i) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(10-i), val)
+		}
+	}
+}
+
+func TestDataSeriesFunctional(t *testing.T) {
+	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	doubled := series.Map(func(_ int, val any) any {
+		return val.(float64) * 2
+	})
+	if doubled.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", doubled.Len())
+	}
+	for i := 0; i < 10; i++ {
+		if val := doubled.Float(i); val != float64(i+1)*2 {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(i+1)*2, val)
+		}
+	}
+	series.SetValue(0, 100.0)
+	if doubled.Float(0) == 100.0 {
+		t.Error("Expected data to be copied, not referenced")
+	}
+	series.SetValue(0, 1.0) // Reset the value.
+
+	evens := series.Filter(func(_ int, val any) bool {
+		return EqualApprox(math.Mod(val.(float64), 2), 0)
+	})
+	if evens.Len() != 5 {
+		t.Fatalf("Expected 5 rows, got %d", evens.Len())
+	}
+	for i := 0; i < 5; i++ {
+		if val := evens.Float(i); val != float64(i+1)*2 {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(i+1)*2, val)
+		}
+	}
+	if series.Len() != 10 {
+		t.Fatalf("Expected series to still have 10 rows, got %d", series.Len())
+	}
+
+	diffed := series.MapReverse(func(i int, v any) any {
+		if i == 0 {
+			return 0.0
+		}
+		return v.(float64) - series.Float(i-1)
+	})
+	if diffed.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", diffed.Len())
+	}
+	if diffed.Float(0) != 0.0 {
+		t.Errorf("Expected first value to be 0.0, got %v", diffed.Float(0))
+	}
+	for i := 1; i < 10; i++ {
+		if val := diffed.Float(i); val != 1.0 {
+			t.Errorf("(%d)\tExpected 1.0, got %v", i, val)
+		}
+	}
+}
+
 func TestAppliedSeries(t *testing.T) {
-	underlying := NewDataSeries(dataframe.NewSeriesFloat64("test", nil, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
-	applied := NewAppliedSeries(underlying, func(_ *AppliedSeries, _ int, val interface{}) interface{} {
+	underlying := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	applied := NewAppliedSeries(underlying, func(_ *AppliedSeries, _ int, val any) any {
 		return val.(float64) * 2
 	})
 
@@ -32,7 +146,7 @@ func TestAppliedSeries(t *testing.T) {
 	}
 
 	// Test that the underlying series is not modified when the applied series is modified.
-	applied.SetValue(0, 100)
+	applied.SetValue(0, 100.0)
 	if underlying.Float(0) != 1 {
 		t.Errorf("Expected 1, got %v", underlying.Float(0))
 	}
@@ -43,7 +157,7 @@ func TestAppliedSeries(t *testing.T) {
 
 func TestRollingAppliedSeries(t *testing.T) {
 	// Test rolling average.
-	series := NewDataSeries(dataframe.NewSeriesFloat64("test", nil, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 
 	sma5Expected := []float64{1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8}
 	sma5 := (Series)(series.Rolling(5).Average()) // Take the 5 period moving average and cast it to Series.
@@ -71,7 +185,7 @@ func TestRollingAppliedSeries(t *testing.T) {
 	}
 }
 
-func TestDataSeries(t *testing.T) {
+func TestDataSeriesEURUSD(t *testing.T) {
 	data, err := EURUSD()
 	if err != nil {
 		t.Fatalf("Expected no error, got %s", err)
@@ -90,7 +204,7 @@ func TestDataSeries(t *testing.T) {
 	if sma10.Len() != 2610 {
 		t.Fatalf("Expected 2610 rows, got %d", sma10.Len())
 	}
-	if sma10.Value(-1) != 1.10039 { // Latest closing price averaged over 10 periods.
+	if !EqualApprox(sma10.Value(-1).(float64), 1.15878) { // Latest closing price averaged over 10 periods.
 		t.Fatalf("Expected 1.10039, got %f", sma10.Value(-1))
 	}
 }

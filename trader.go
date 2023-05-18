@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron"
-	"github.com/rocketlaunchr/dataframe-go"
 )
 
 // Performance (financial) reporting and statistics.
@@ -86,13 +85,13 @@ func (t *Trader) Run() {
 func (t *Trader) Init() {
 	t.Strategy.Init(t)
 	t.stats.Dated = NewDataFrame(
-		NewDataSeries(dataframe.NewSeriesTime("Date", nil)),
-		NewDataSeries(dataframe.NewSeriesFloat64("Equity", nil)),
-		NewDataSeries(dataframe.NewSeriesFloat64("Profit", nil)),
-		NewDataSeries(dataframe.NewSeriesFloat64("Drawdown", nil)),
-		NewDataSeries(dataframe.NewSeriesFloat64("Returns", nil)),
+		NewDataSeries("Date"),
+		NewDataSeries("Equity"),
+		NewDataSeries("Profit"),
+		NewDataSeries("Drawdown"),
+		NewDataSeries("Returns"),
 	)
-	t.Broker.SignalConnect("PositionClosed", func(args ...interface{}) {
+	t.Broker.SignalConnect("PositionClosed", t, func(args ...interface{}) {
 		position := args[0].(Position)
 		t.stats.returnsThisCandle += position.PL()
 	})

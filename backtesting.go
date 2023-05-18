@@ -228,19 +228,17 @@ func (b *TestBroker) Advance() {
 	}
 }
 
+// Candles returns the last count candles for the given symbol and frequency. If count is greater than the number of candles, then a dataframe with zero rows is returned.
+//
+// If the TestBroker has a data broker set, then it will use that to get candles. Otherwise, it will return the candles from the data that was set. The first call to Candles will fetch candles from the data broker if it is set, so it is recommended to set the data broker before the first call to Candles and to call Candles the first time with the number of candles you want to fetch.
 func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
 	start := Max(Max(b.candleCount, 1)-count, 0)
-	end := b.candleCount - 1
+	adjCount := b.candleCount - start
 
 	if b.Data != nil && b.candleCount >= b.Data.Len() { // We have data and we are at the end of it.
-		if count >= b.Data.Len() { // We are asking for more data than we have.
-			return b.Data.Copy(0, -1).(*DataFrame), ErrEOF
-		} else {
-			return b.Data.Copy(start, -1).(*DataFrame), ErrEOF
-		}
+		return b.Data.Copy(-count, -1).(*DataFrame), ErrEOF // Return the last count candles.
 	} else if b.DataBroker != nil && b.Data == nil { // We have a data broker but no data.
-		// Fetch a lot of candles from the broker so we don't keep asking.
-		candles, err := b.DataBroker.Candles(symbol, frequency, Max(count, 1000))
+		candles, err := b.DataBroker.Candles(symbol, frequency, count)
 		if err != nil {
 			return nil, err
 		}
@@ -248,10 +246,7 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataF
 	} else if b.Data == nil { // Both b.DataBroker and b.Data are nil.
 		return nil, ErrNoData
 	}
-
-	// TODO: check if count > our rows if we are using a data broker and then fetch more data if so.
-
-	return b.Data.Copy(start, end).(*DataFrame), nil
+	return b.Data.Copy(start, adjCount).(*DataFrame), nil
 }
 
 func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {

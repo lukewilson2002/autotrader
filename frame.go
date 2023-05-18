@@ -3,44 +3,42 @@ package autotrader
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
-	df "github.com/rocketlaunchr/dataframe-go"
 	"golang.org/x/exp/maps"
 )
 
 type Frame interface {
 	// Reading data.
 
-	// Copy returns a new Frame with a copy of the original series. start is an EasyIndex and len is the number of rows to copy from start onward. If len is negative then all rows from start to the end of the frame are copied. If there are not enough rows to copy then the maximum amount is returned. If there are no items to copy then an empty frame will be returned with a length of zero.
-	//
-	// If start is out of bounds then nil is returned.
+	// Copy returns a new Frame with a copy of the original series. start is an EasyIndex and count is the number of rows to copy from start onward. If count is negative then all rows from start to the end of the frame are copied. If there are not enough rows to copy then the maximum amount is returned. If there are no items to copy then aframe will be returned with a length of zero but with the same column names as the original.
 	//
 	// Examples:
 	//
 	//  Copy(0, 10) - copy the first 10 items
 	//  Copy(-1, 1) - copy the last item
 	//  Copy(-10, -1) - copy the last 10 items
-	Copy(start, len int) Frame
+	Copy(start, count int) Frame
 	Contains(names ...string) bool // Contains returns true if the frame contains all the columns specified.
 	Len() int
 	Names() []string
 	Select(names ...string) Frame // Select returns a new Frame with only the specified columns.
 	Series(name string) Series
 	String() string
-	Value(column string, i int) interface{}
+	Value(column string, i int) any
 	Float(column string, i int) float64
-	Int(column string, i int) int64
+	Int(column string, i int) int
 	Str(column string, i int) string
 	Time(column string, i int) time.Time
 
 	// Writing data.
 	PushSeries(s ...Series) error
-	PushValues(values map[string]interface{}) error
-	RemoveSeries(name string)
+	PushValues(values map[string]any) error
+	RemoveSeries(names ...string)
 
 	// Easy access functions for common columns.
 	ContainsDOHLCV() bool // ContainsDOHLCV returns true if the frame contains all the columns: Date, Open, High, Low, Close, and Volume.
@@ -49,7 +47,7 @@ type Frame interface {
 	High(i int) float64
 	Low(i int) float64
 	Close(i int) float64
-	Volume(i int) float64
+	Volume(i int) int
 	Dates() Series
 	Opens() Series
 	Highs() Series
@@ -75,56 +73,51 @@ func NewDataFrame(series ...Series) *DataFrame {
 // Use the PushCandle method to add candlesticks in an easy and type-safe way.
 func NewDOHLCVDataFrame() *DataFrame {
 	return NewDataFrame(
-		NewDataSeries(df.NewSeriesTime("Date", nil)),
-		NewDataSeries(df.NewSeriesFloat64("Open", nil)),
-		NewDataSeries(df.NewSeriesFloat64("High", nil)),
-		NewDataSeries(df.NewSeriesFloat64("Low", nil)),
-		NewDataSeries(df.NewSeriesFloat64("Close", nil)),
-		NewDataSeries(df.NewSeriesInt64("Volume", nil)),
+		NewDataSeries("Date"),
+		NewDataSeries("Open"),
+		NewDataSeries("High"),
+		NewDataSeries("Low"),
+		NewDataSeries("Close"),
+		NewDataSeries("Volume"),
 	)
 }
 
-// Copy returns a new DataFrame with a copy of the original series. start is an EasyIndex and len is the number of rows to copy from start onward. If len is negative then all rows from start to the end of the frame are copied. If there are not enough rows to copy then the maximum amount is returned. If there are no items to copy then an empty frame will be returned with a length of zero.
-//
-// If start is out of bounds then nil is returned.
+// Copy returns a new DataFrame with a copy of the original series. start is an EasyIndex and count is the number of rows to copy from start onward. If count is negative then all rows from start to the end of the frame are copied. If there are not enough rows to copy then the maximum amount is returned. If there are no items to copy then aframe will be returned with a length of zero but with the same column names as the original.
 //
 // Examples:
 //
 //	Copy(0, 10) - copy the first 10 items
 //	Copy(-1, 1) - copy the last item
 //	Copy(-10, -1) - copy the last 10 items
-func (d *DataFrame) Copy(start, end int) Frame {
+func (d *DataFrame) Copy(start, count int) Frame {
 	out := &DataFrame{}
-	for _, v := range d.series {
-		newSeries := v.Copy(start, end)
-		out.PushSeries(newSeries)
+	for _, s := range d.series {
+		out.PushSeries(s.Copy(start, count))
 	}
 	return out
 }
 
-// Len returns the number of rows in the DataFrame or 0 if the DataFrame is nil. A value less than zero means the
-// DataFrame has Series of varying lengths.
+// Len returns the number of rows in the dataframe or 0 if the dataframe has no rows. If the dataframe has series of different lengths, then the longest length series is returned.
 func (d *DataFrame) Len() int {
 	if len(d.series) == 0 {
 		return 0
 	}
-	// Check if all the Series have the same length.
 	var length int
 	for _, v := range d.rowCounts {
-		if length == 0 {
+		if v > length {
 			length = v
-		} else if length != v {
-			return -1
 		}
 	}
 	return length
 }
 
-// Select returns a new *DataFrame with the selected Series. The series are not copied so the returned Frame will be a reference to the current frame. If a Series name is not found, it is ignored.
+// Select returns a new DataFrame with the selected Series. The series are not copied so the returned frame will be a reference to the current frame. If a series name is not found, it is ignored.
 func (d *DataFrame) Select(names ...string) Frame {
 	out := &DataFrame{}
 	for _, name := range names {
-		out.PushSeries(d.Series(name))
+		if s := d.Series(name); s != nil {
+			out.PushSeries(s)
+		}
 	}
 	return out
 }
@@ -192,40 +185,40 @@ func (d *DataFrame) String() string {
 	return buffer.String()
 }
 
-// Date returns the value of the Date column at index i. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Date returns the value of the Date column at index i. The first value is at index 0. A negative value for i can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, time.Time{} is returned.
 // This is the equivalent to calling Time("Date", i).
 func (d *DataFrame) Date(i int) time.Time {
 	return d.Time("Date", i)
 }
 
-// Open returns the open price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Open returns the open price of the candle at index i. The first candle is at index 0. A negative value for i can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, NaN is returned.
 // This is the equivalent to calling Float("Open", i).
 func (d *DataFrame) Open(i int) float64 {
 	return d.Float("Open", i)
 }
 
-// High returns the high price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// High returns the high price of the candle at index i. The first candle is at index 0. A negative value for i can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, NaN is returned.
 // This is the equivalent to calling Float("High", i).
 func (d *DataFrame) High(i int) float64 {
 	return d.Float("High", i)
 }
 
-// Low returns the low price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Low returns the low price of the candle at index i. The first candle is at index 0. A negative value for i can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, NaN is returned.
 // This is the equivalent to calling Float("Low", i).
 func (d *DataFrame) Low(i int) float64 {
 	return d.Float("Low", i)
 }
 
-// Close returns the close price of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Close returns the close price of the candle at index i. The first candle is at index 0. A negative value for i can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, NaN is returned.
 // This is the equivalent to calling Float("Close", i).
 func (d *DataFrame) Close(i int) float64 {
 	return d.Float("Close", i)
 }
 
-// Volume returns the volume of the candle at index i. The first candle is at index 0. A negative value for i (-n) can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Volume returns the volume of the candle at index i. The first candle is at index 0. A negative value for i can be used to get n candles from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
 // This is the equivalent to calling Float("Volume", i).
-func (d *DataFrame) Volume(i int) float64 {
-	return d.Float("Volume", i)
+func (d *DataFrame) Volume(i int) int {
+	return d.Int("Volume", i)
 }
 
 // Dates returns a Series of all the dates in the DataFrame.
@@ -258,6 +251,7 @@ func (d *DataFrame) Volumes() Series {
 	return d.Series("Volume")
 }
 
+// Contains returns true if the DataFrame contains all the given series names.
 func (d *DataFrame) Contains(names ...string) bool {
 	for _, name := range names {
 		if _, ok := d.series[name]; !ok {
@@ -267,22 +261,13 @@ func (d *DataFrame) Contains(names ...string) bool {
 	return true
 }
 
+// ContainsDOHLCV returns true if the DataFrame contains the series "Date", "Open", "High", "Low", "Close", and "Volume".
 func (d *DataFrame) ContainsDOHLCV() bool {
 	return d.Contains("Date", "Open", "High", "Low", "Close", "Volume")
 }
 
+// PushCandle pushes a candlestick to the dataframe. If the dataframe does not contain the series "Date", "Open", "High", "Low", "Close", and "Volume", an error is returned.
 func (d *DataFrame) PushCandle(date time.Time, open, high, low, close float64, volume int64) error {
-	if len(d.series) == 0 {
-		d.PushSeries(
-			NewDataSeries(df.NewSeriesTime("Date", nil, date)),
-			NewDataSeries(df.NewSeriesFloat64("Open", nil, open)),
-			NewDataSeries(df.NewSeriesFloat64("High", nil, high)),
-			NewDataSeries(df.NewSeriesFloat64("Low", nil, low)),
-			NewDataSeries(df.NewSeriesFloat64("Close", nil, close)),
-			NewDataSeries(df.NewSeriesInt64("Volume", nil, volume)),
-		)
-		return nil
-	}
 	if !d.ContainsDOHLCV() {
 		return fmt.Errorf("DataFrame does not contain Date, Open, High, Low, Close, Volume columns")
 	}
@@ -295,9 +280,10 @@ func (d *DataFrame) PushCandle(date time.Time, open, high, low, close float64, v
 	return nil
 }
 
-func (d *DataFrame) PushValues(values map[string]interface{}) error {
+// PushValues uses the keys of the values map as the names of the series to push the values to. If the dataframe does not contain a series with a given name, an error is returned.
+func (d *DataFrame) PushValues(values map[string]any) error {
 	if len(d.series) == 0 {
-		return fmt.Errorf("DataFrame has no columns") // TODO: could create the columns here.
+		return fmt.Errorf("DataFrame has no columns")
 	}
 	for name, value := range values {
 		if _, ok := d.series[name]; !ok {
@@ -308,6 +294,7 @@ func (d *DataFrame) PushValues(values map[string]interface{}) error {
 	return nil
 }
 
+// PushSeries adds the given series to the dataframe. If the dataframe already contains a series with the same name, an error is returned.
 func (d *DataFrame) PushSeries(series ...Series) error {
 	if d.series == nil {
 		d.series = make(map[string]Series, len(series))
@@ -316,8 +303,11 @@ func (d *DataFrame) PushSeries(series ...Series) error {
 
 	for _, s := range series {
 		name := s.Name()
-		s.SignalConnect("LengthChanged", d.onSeriesLengthChanged, name)
-		s.SignalConnect("NameChanged", d.onSeriesNameChanged, name)
+		if _, ok := d.series[name]; ok {
+			return fmt.Errorf("DataFrame already contains column %q", name)
+		}
+		s.SignalConnect("LengthChanged", d, d.onSeriesLengthChanged, name)
+		s.SignalConnect("NameChanged", d, d.onSeriesNameChanged, name)
 		d.series[name] = s
 		d.rowCounts[name] = s.Len()
 	}
@@ -325,18 +315,21 @@ func (d *DataFrame) PushSeries(series ...Series) error {
 	return nil
 }
 
-func (d *DataFrame) RemoveSeries(name string) {
-	s, ok := d.series[name]
-	if !ok {
-		return
+// RemoveSeries removes the given series from the dataframe. If the dataframe does not contain a series with a given name, nothing happens.
+func (d *DataFrame) RemoveSeries(names ...string) {
+	for _, name := range names {
+		s, ok := d.series[name]
+		if !ok {
+			return
+		}
+		s.SignalDisconnect("LengthChanged", d, d.onSeriesLengthChanged)
+		s.SignalDisconnect("NameChanged", d, d.onSeriesNameChanged)
+		delete(d.series, name)
+		delete(d.rowCounts, name)
 	}
-	s.SignalDisconnect("LengthChanged", d.onSeriesLengthChanged)
-	s.SignalDisconnect("NameChanged", d.onSeriesNameChanged)
-	delete(d.series, name)
-	delete(d.rowCounts, name)
 }
 
-func (d *DataFrame) onSeriesLengthChanged(args ...interface{}) {
+func (d *DataFrame) onSeriesLengthChanged(args ...any) {
 	if len(args) != 2 {
 		panic(fmt.Sprintf("expected two arguments, got %d", len(args)))
 	}
@@ -345,7 +338,7 @@ func (d *DataFrame) onSeriesLengthChanged(args ...interface{}) {
 	d.rowCounts[name] = newLen
 }
 
-func (d *DataFrame) onSeriesNameChanged(args ...interface{}) {
+func (d *DataFrame) onSeriesNameChanged(args ...any) {
 	if len(args) != 2 {
 		panic(fmt.Sprintf("expected two arguments, got %d", len(args)))
 	}
@@ -358,12 +351,13 @@ func (d *DataFrame) onSeriesNameChanged(args ...interface{}) {
 	delete(d.rowCounts, oldName)
 
 	// Reconnect our signal handlers to update the name we use in the handlers.
-	d.series[newName].SignalDisconnect("LengthChanged", d.onSeriesLengthChanged)
-	d.series[newName].SignalDisconnect("NameChanged", d.onSeriesNameChanged)
-	d.series[newName].SignalConnect("LengthChanged", d.onSeriesLengthChanged, newName)
-	d.series[newName].SignalConnect("NameChanged", d.onSeriesNameChanged, newName)
+	d.series[newName].SignalDisconnect("LengthChanged", d, d.onSeriesLengthChanged)
+	d.series[newName].SignalDisconnect("NameChanged", d, d.onSeriesNameChanged)
+	d.series[newName].SignalConnect("LengthChanged", d, d.onSeriesLengthChanged, newName)
+	d.series[newName].SignalConnect("NameChanged", d, d.onSeriesNameChanged, newName)
 }
 
+// Names returns a slice of the names of the series in the dataframe.
 func (d *DataFrame) Names() []string {
 	return maps.Keys(d.series)
 }
@@ -381,51 +375,41 @@ func (d *DataFrame) Series(name string) Series {
 }
 
 // Value returns the value of the column at index i. The first value is at index 0. A negative value for i can be used to get i values from the latest, like Python's negative indexing. If i is out of bounds, nil is returned.
-func (d *DataFrame) Value(column string, i int) interface{} {
+func (d *DataFrame) Value(column string, i int) any {
 	if len(d.series) == 0 {
 		return nil
 	}
-	i = EasyIndex(i, d.Len())  // Allow for negative indexing.
-	if i < 0 || i >= d.Len() { // Prevent out of bounds access.
-		return nil
+	if s, ok := d.series[column]; ok {
+		return s.Value(i)
 	}
-	return d.series[column].Value(i)
+	return nil
 }
 
-// Float returns the value of the column at index i casted to float64. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+// Float returns the value of the column at index i casted to float64. The first value is at index 0. A negative value for i can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, NaN is returned.
 func (d *DataFrame) Float(column string, i int) float64 {
 	val := d.Value(column, i)
-	if val == nil {
-		return 0
-	}
 	switch val := val.(type) {
 	case float64:
 		return val
 	default:
-		return 0
+		return math.NaN()
 	}
 }
 
-// Int returns the value of the column at index i casted to int. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
-func (d *DataFrame) Int(column string, i int) int64 {
+// Int returns the value of the column at index i casted to int. The first value is at index 0. A negative value for i can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, 0 is returned.
+func (d *DataFrame) Int(column string, i int) int {
 	val := d.Value(column, i)
-	if val == nil {
-		return 0
-	}
 	switch val := val.(type) {
-	case int64:
+	case int:
 		return val
 	default:
 		return 0
 	}
 }
 
-// String returns the value of the column at index i casted to string. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, "" is returned.
+// String returns the value of the column at index i casted to string. The first value is at index 0. A negative value for i can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, "" is returned.
 func (d *DataFrame) Str(column string, i int) string {
 	val := d.Value(column, i)
-	if val == nil {
-		return ""
-	}
 	switch val := val.(type) {
 	case string:
 		return val
@@ -434,12 +418,9 @@ func (d *DataFrame) Str(column string, i int) string {
 	}
 }
 
-// Time returns the value of the column at index i casted to time.Time. The first value is at index 0. A negative value for i (-n) can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, time.Time{} is returned.
+// Time returns the value of the column at index i casted to time.Time. The first value is at index 0. A negative value for i can be used to get n values from the latest, like Python's negative indexing. If i is out of bounds, time.Time{} is returned.
 func (d *DataFrame) Time(column string, i int) time.Time {
 	val := d.Value(column, i)
-	if val == nil {
-		return time.Time{}
-	}
 	switch val := val.(type) {
 	case time.Time:
 		return val
