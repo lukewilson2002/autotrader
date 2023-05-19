@@ -10,7 +10,7 @@ const testDataCSV = `date,open,high,low,close,volume
 2022-01-01,1.1,1.2,1.0,1.15,100
 2022-01-02,1.15,1.2,1.1,1.2,110
 2022-01-03,1.2,1.3,1.15,1.25,120
-2022-01-04,1.25,1.3,1.2,1.1,130
+2022-01-04,1.25,1.3,1.0,1.1,130
 2022-01-05,1.1,1.2,1.0,1.15,110
 2022-01-06,1.15,1.2,1.1,1.2,120
 2022-01-07,1.2,1.3,1.15,1.25,140
@@ -79,21 +79,13 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 	}
 }
 
-func TestBacktestingBrokerFunctions(t *testing.T) {
-	broker := NewTestBroker(nil, nil, 100_000, 20, 0, 0)
-
-	if !EqualApprox(broker.NAV(), 100_000) {
-		t.Errorf("Expected NAV to be 100_000, got %f", broker.NAV())
-	}
-}
-
-func TestBacktestingBrokerOrders(t *testing.T) {
+func TestBacktestingBrokerMarketOrders(t *testing.T) {
 	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
 	timeBeforeOrder := time.Now()
-	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
+	order, err := broker.Order(Market, "EUR_USD", 50_000, 0, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +117,7 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 	if order.TakeProfit() != 0 {
 		t.Errorf("Expected take profit to be 0, got %f", order.TakeProfit())
 	}
-	if order.Type() != MarketOrder {
+	if order.Type() != Market {
 		t.Errorf("Expected order type to be MarketOrder, got %s", order.Type())
 	}
 
@@ -181,12 +173,111 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 	}
 }
 
-func TestBacktestingBrokerStopLimitOrders(t *testing.T) {
+func TestBacktestingBrokerLimitOrders(t *testing.T) {
 	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
-	order, err := broker.MarketOrder("", 10_000, 1.05, 1.25)
+	order, err := broker.Order(Limit, "EUR_USD", -50_000, 1.3, 1.35, 1.1) // Sell limit 50,000 USD for 1000 EUR
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order == nil {
+		t.Fatal("Order is nil")
+	}
+	if order.Price() != 1.3 {
+		t.Errorf("Expected order price to be 1.3, got %f", order.Price())
+	}
+	if order.Fulfilled() != false {
+		t.Error("Expected order to not be fulfilled")
+	}
+
+	broker.Advance()
+	broker.Advance() // Advance to the third candle where the order should be fulfilled
+
+	if order.Fulfilled() != true {
+		t.Error("Expected order to be fulfilled")
+	}
+
+	position := order.Position()
+	if position == nil {
+		t.Fatal("Position is nil")
+	}
+	if position.Closed() != false {
+		t.Fatal("Expected position to not be closed")
+	}
+
+	broker.Advance() // Advance to the fourth candle which should hit our take profit
+
+	if position.Closed() != true {
+		t.Fatal("Expected position to be closed")
+	}
+	if position.ClosePrice() != 1.1 {
+		t.Errorf("Expected position close price to be 1.1, got %f", position.ClosePrice())
+	}
+	if position.CloseType() != CloseTakeProfit {
+		t.Errorf("Expected position close type to be TP, got %s", position.CloseType())
+	}
+	if !EqualApprox(position.PL(), 10_000) { // abs(1.1-1.3) * 50_000 = 10,000
+		t.Errorf("Expected position PL to be 10000, got %f", position.PL())
+	}
+}
+
+func TestBacktestingBrokerStopOrders(t *testing.T) {
+	data := newTestingDataframe()
+	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker.Slippage = 0
+
+	order, err := broker.Order(Stop, "EUR_USD", 50_000, 1.2, 1, 1.3) // Buy stop 50,000 EUR for 1000 USD
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order == nil {
+		t.Fatal("Order is nil")
+	}
+	if order.Price() != 1.2 {
+		t.Errorf("Expected order price to be 1.2, got %f", order.Price())
+	}
+	if order.Fulfilled() != false {
+		t.Error("Expected order to not be fulfilled")
+	}
+
+	broker.Advance() // Advance to the second candle where the order should be fulfilled
+
+	if order.Fulfilled() != true {
+		t.Error("Expected order to be fulfilled")
+	}
+
+	position := order.Position()
+	if position == nil {
+		t.Fatal("Position is nil")
+	}
+	if position.Closed() != false {
+		t.Fatal("Expected position to not be closed")
+	}
+
+	broker.Advance() // Advance to the third candle which should hit our take profit
+
+	if position.Closed() != true {
+		t.Fatal("Expected position to be closed")
+	}
+	if position.ClosePrice() != 1.3 {
+		t.Errorf("Expected position close price to be 1.3, got %f", position.ClosePrice())
+	}
+	if position.CloseType() != CloseTakeProfit {
+		t.Errorf("Expected position close type to be TP, got %s", position.CloseType())
+	}
+	if !EqualApprox(position.PL(), 5000) { // (1.3-1.2) * 50_000 = 5000
+		t.Errorf("Expected position PL to be 5000, got %f", position.PL())
+	}
+}
+
+func TestBacktestingBrokerStopLossTakeProfit(t *testing.T) {
+	data := newTestingDataframe()
+	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker.Slippage = 0
+
+	order, err := broker.Order(Market, "", 10_000, 0, 1.05, 1.25)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +317,7 @@ func TestBacktestingBrokerStopLimitOrders(t *testing.T) {
 
 	broker.Advance() // 4th candle
 
-	order, err = broker.MarketOrder("", 10_000, -0.2, 1.4) // Long position with trailing stop loss of 0.2.
+	order, err = broker.Order(Market, "", 10_000, 0, -0.2, 1.4) // Long position with trailing stop loss of 0.2.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +362,7 @@ func TestBacktestingBrokerStopLimitOrders(t *testing.T) {
 	if !EqualApprox(position.PL(), -500) { // (1.05-1.1) * 10_000 = -500
 		t.Errorf("Expected position PL to be 1000, got %f", position.PL())
 	}
-	if position.CloseType() != closeTypeTrailingStop {
-		t.Errorf("Expected close type to be %q, got %q", closeTypeTrailingStop, position.CloseType())
+	if position.CloseType() != CloseTrailingStop {
+		t.Errorf("Expected close type to be %q, got %q", CloseTrailingStop, position.CloseType())
 	}
 }

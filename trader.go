@@ -165,14 +165,14 @@ func (t *Trader) fetchData() {
 func (t *Trader) Buy(units float64) {
 	t.closeOrdersAndPositions()
 	t.Log.Printf("Buy %f units", units)
-	t.Broker.MarketOrder(t.Symbol, units, 0.0, 0.0)
+	t.Broker.Order(Market, t.Symbol, units, 0, 0, 0)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{units, false})
 }
 
 func (t *Trader) Sell(units float64) {
 	t.closeOrdersAndPositions()
 	t.Log.Printf("Sell %f units", units)
-	t.Broker.MarketOrder(t.Symbol, -units, 0.0, 0.0)
+	t.Broker.Order(Market, t.Symbol, -units, 0, 0, 0)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{-units, false})
 }
 

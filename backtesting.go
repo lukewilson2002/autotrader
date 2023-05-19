@@ -371,6 +371,28 @@ func (b *TestBroker) Advance() {
 func (b *TestBroker) Tick() {
 	// Check if the current candle's high and lows contain any take profits or stop losses.
 	high, low := b.Data.High(b.CandleIndex()), b.Data.Low(b.CandleIndex())
+
+	// Update orders.
+	for _, any_o := range b.orders {
+		if any_o.Fulfilled() {
+			continue
+		}
+		o := any_o.(*TestOrder)
+
+		if o.orderType == Limit {
+			if o.price >= low && o.price <= high {
+				o.fulfill(o.price)
+			}
+		} else if o.orderType == Stop {
+			if o.price <= high && o.price >= low {
+				o.fulfill(o.price)
+			}
+		} else {
+			panic("the order type is either unknown or otherwise should not be market because those are fulfilled immediately")
+		}
+	}
+
+	// Update positions.
 	for _, any_p := range b.positions {
 		if any_p.Closed() {
 			continue
@@ -385,15 +407,18 @@ func (b *TestBroker) Tick() {
 		// Check if the position should be closed.
 		if p.takeProfit > 0 {
 			if (p.units > 0 && p.takeProfit <= high) || (p.units < 0 && p.takeProfit >= low) {
-				p.close(p.takeProfit, closeTypeTakeProfit)
+				p.close(p.takeProfit, CloseTakeProfit)
+				continue
 			}
-		} else if p.stopLoss > 0 {
+		}
+		// stopLoss won't be set if trailingSL is set, and vice versa.
+		if p.stopLoss > 0 {
 			if (p.units > 0 && p.stopLoss >= low) || (p.units < 0 && p.stopLoss <= high) {
-				p.close(p.stopLoss, closeTypeStopLoss)
+				p.close(p.stopLoss, CloseStopLoss)
 			}
 		} else if p.trailingSL > 0 {
 			if (p.units > 0 && p.trailingSL >= low) || (p.units < 0 && p.trailingSL <= high) {
-				p.close(p.trailingSL, closeTypeTrailingStop)
+				p.close(p.trailingSL, CloseTrailingStop)
 			}
 		}
 	}
@@ -438,7 +463,7 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataF
 	return b.Data.Copy(start, adjCount).(*DataFrame), nil
 }
 
-func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {
+func (b *TestBroker) Order(orderType OrderType, symbol string, units, price, stopLoss, takeProfit float64) (Order, error) {
 	if units == 0 {
 		return nil, ErrZeroUnits
 	}
@@ -452,17 +477,18 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		}
 	}
 
-	price := b.Price("", units > 0)
-
-	slippage := rand.Float64() * b.Slippage * price
-	price += slippage - slippage/2 // Get a slippage as +/- 50% of the slippage.
-
 	var trailingSL float64
 	if stopLoss < 0 {
 		trailingSL = -stopLoss
 	}
 
+	marketPrice := b.Price("", units > 0)
+	if orderType == Market {
+		price = marketPrice
+	}
+
 	order := &TestOrder{
+		broker:     b,
 		id:         strconv.Itoa(rand.Int()),
 		leverage:   b.Leverage,
 		position:   nil,
@@ -470,7 +496,7 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		symbol:     symbol,
 		takeProfit: takeProfit,
 		time:       time.Now(),
-		orderType:  MarketOrder,
+		orderType:  orderType,
 		units:      units,
 	}
 	if trailingSL > 0 {
@@ -479,27 +505,18 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		order.stopLoss = stopLoss
 	}
 
-	// Instantly fulfill the order.
-	order.position = &TestPosition{
-		broker:     b,
-		closed:     false,
-		entryPrice: price,
-		id:         strconv.Itoa(rand.Int()),
-		leverage:   b.Leverage,
-		symbol:     symbol,
-		takeProfit: takeProfit,
-		time:       time.Now(),
-		units:      units,
+	// TODO: only instantly fulfill market orders or sometimes limit orders when requirements are met.
+	if orderType == Market {
+		order.fulfill(price)
+	} else if orderType == Limit {
+		if units > 0 && marketPrice <= order.price {
+			order.fulfill(price)
+		} else if units < 0 && marketPrice >= order.price {
+			order.fulfill(price)
+		}
 	}
-	if trailingSL > 0 {
-		order.position.trailingSLDist = trailingSL
-	} else {
-		order.position.stopLoss = stopLoss
-	}
-	b.Cash -= order.position.EntryValue()
 
 	b.orders = append(b.orders, order)
-	b.positions = append(b.positions, order.position)
 	b.SignalEmit("OrderPlaced", order)
 
 	return order, nil
@@ -556,8 +573,8 @@ type TestPosition struct {
 	broker         *TestBroker
 	closed         bool
 	entryPrice     float64
-	closePrice     float64 // If zero, then position has not been closed.
-	closeType      string  // SL, TS, TP
+	closePrice     float64        // If zero, then position has not been closed.
+	closeType      OrderCloseType // SL, TS, TP
 	id             string
 	leverage       float64
 	symbol         string
@@ -570,18 +587,11 @@ type TestPosition struct {
 }
 
 func (p *TestPosition) Close() error {
-	p.close(p.broker.Price("", p.units < 0), closeTypeMarket)
+	p.close(p.broker.Price("", p.units < 0), CloseMarket)
 	return nil
 }
 
-const (
-	closeTypeMarket       = "M"
-	closeTypeStopLoss     = "SL"
-	closeTypeTrailingStop = "TS"
-	closeTypeTakeProfit   = "TP"
-)
-
-func (p *TestPosition) close(atPrice float64, closeType string) {
+func (p *TestPosition) close(atPrice float64, closeType OrderCloseType) {
 	if p.closed {
 		return
 	}
@@ -597,7 +607,7 @@ func (p *TestPosition) Closed() bool {
 	return p.closed
 }
 
-func (p *TestPosition) CloseType() string {
+func (p *TestPosition) CloseType() OrderCloseType {
 	return p.closeType
 }
 
@@ -657,6 +667,7 @@ func (p *TestPosition) Value() float64 {
 }
 
 type TestOrder struct {
+	broker     *TestBroker
 	id         string
 	leverage   float64
 	position   *TestPosition
@@ -672,6 +683,31 @@ type TestOrder struct {
 
 func (o *TestOrder) Cancel() error {
 	return ErrCancelFailed
+}
+
+func (o *TestOrder) fulfill(atPrice float64) {
+	slippage := rand.Float64() * o.broker.Slippage * atPrice
+	atPrice += slippage - slippage/2 // Adjust price as +/- 50% of the slippage.
+
+	o.position = &TestPosition{
+		broker:     o.broker,
+		closed:     false,
+		entryPrice: atPrice,
+		id:         strconv.Itoa(rand.Int()),
+		leverage:   o.leverage,
+		symbol:     o.symbol,
+		takeProfit: o.takeProfit,
+		time:       time.Now(),
+		units:      o.units,
+	}
+	if o.trailingSL > 0 {
+		o.position.trailingSLDist = o.trailingSL
+	} else {
+		o.position.stopLoss = o.stopLoss
+	}
+	o.broker.Cash -= o.position.EntryValue()
+
+	o.broker.positions = append(o.broker.positions, o.position)
 }
 
 func (o *TestOrder) Fulfilled() bool {

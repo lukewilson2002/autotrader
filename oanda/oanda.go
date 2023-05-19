@@ -82,7 +82,7 @@ func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.DataFr
 	return newDataframe(candlestickResponse)
 }
 
-func (b *OandaBroker) MarketOrder(symbol string, units, stopLoss, takeProfit float64) (auto.Order, error) {
+func (b *OandaBroker) Order(orderType auto.OrderType, symbol string, units, price, stopLoss, takeProfit float64) (auto.Order, error) {
 	return nil, nil
 }
 
