@@ -3,6 +3,10 @@ package autotrader
 import "math"
 
 // RSI calculates the Relative Strength Index for a given Series. Typically, the input series is the Close column of a DataFrame. Returns a Series of RSI values of the same length as the input.
+//
+// Traditionally, an RSI reading of 70 or above indicates an overbought condition, and a reading of 30 or below indicates an oversold condition.
+//
+// Typically, the RSI is calculated with a period of 14 days.
 func RSI(series Series, periods int) Series {
 	// Calculate the difference between each day's close and the previous day's close.
 	delta := series.MapReverse(func(i int, v interface{}) interface{} {
@@ -19,6 +23,10 @@ func RSI(series Series, periods int) Series {
 	avgLoss := losses.Rolling(periods).Mean()
 	// Calculate the RSI.
 	return avgGain.Map(func(i int, val interface{}) interface{} {
-		return 100 - (100 / (1 + (val.(float64) / avgLoss.Value(i).(float64))))
+		loss := avgLoss.Float(i)
+		if loss == 0 {
+			return float64(100)
+		}
+		return float64(100. - 100./(1.+val.(float64)/loss))
 	})
 }

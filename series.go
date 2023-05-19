@@ -362,6 +362,22 @@ func NewDataSeries(name string, vals ...any) *DataSeries {
 	return dataSeries
 }
 
+func NewDataSeriesFloat(name string, vals ...float64) *DataSeries {
+	anyVals := make([]any, len(vals))
+	for i, v := range vals {
+		anyVals[i] = v
+	}
+	return NewDataSeries(name, anyVals...)
+}
+
+func NewDataSeriesInt(name string, vals ...int) *DataSeries {
+	anyVals := make([]any, len(vals))
+	for i, v := range vals {
+		anyVals[i] = v
+	}
+	return NewDataSeries(name, anyVals...)
+}
+
 // Copy returns a new DataSeries with a copy of the original data and Series name. start is an EasyIndex and count is the number of items to copy from start onward. If count is negative then all items from start to the end of the series are copied. If there are not enough items to copy then the maximum amount is returned. If there are no items to copy then an empty DataSeries is returned.
 //
 // Examples:
@@ -528,7 +544,7 @@ func (s *DataSeries) Filter(f func(i int, val any) bool) Series {
 func (s *DataSeries) Map(f func(i int, val any) any) Series {
 	series := s.Copy(0, -1)
 	for i := 0; i < s.Len(); i++ {
-		series.SetValue(i, f(i, series.Value(i)))
+		series.SetValue(i, f(i, s.value(i)))
 	}
 	return series
 }
@@ -537,7 +553,7 @@ func (s *DataSeries) Map(f func(i int, val any) any) Series {
 func (s *DataSeries) MapReverse(f func(i int, val any) any) Series {
 	series := s.Copy(0, -1)
 	for i := s.Len() - 1; i >= 0; i-- {
-		series.SetValue(i, f(i, series.Value(i)))
+		series.SetValue(i, f(i, s.value(i)))
 	}
 	return series
 }
