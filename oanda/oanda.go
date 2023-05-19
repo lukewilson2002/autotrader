@@ -42,6 +42,14 @@ func NewOandaBroker(token, accountID string, practice bool) *OandaBroker {
 	}
 }
 
+func (b *OandaBroker) Bid(symbol string) float64 {
+	return 0
+}
+
+func (b *OandaBroker) Ask(symbol string) float64 {
+	return 0
+}
+
 func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.DataFrame, error) {
 	req, err := http.NewRequest("GET", b.baseUrl+"/v3/accounts/"+b.accountID+"/instruments/"+symbol+"/candles", nil)
 	if err != nil {

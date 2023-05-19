@@ -57,6 +57,8 @@ type Position interface {
 //   - PositionClosed(Position) - Emitted after a position is closed either manually or automatically.
 type Broker interface {
 	Signaler
+	Bid(symbol string) float64 // Bid returns the sell price of the symbol.
+	Ask(symbol string) float64 // Ask returns the buy price of the symbol, which is typically higher than the sell price.
 	// Candles returns a dataframe of candles for the given symbol, frequency, and count by querying the broker.
 	Candles(symbol, frequency string, count int) (*DataFrame, error)
 	MarketOrder(symbol string, units, stopLoss, takeProfit float64) (Order, error)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/go-echarts/go-echarts/v2/charts"
@@ -38,6 +39,29 @@ func Backtest(trader *Trader) {
 
 		log.Printf("Backtest completed on %d candles. Opening report...\n", trader.Stats().Dated.Len())
 		stats := trader.Stats()
+
+		// Divide net profit by maximum drawdown to get the profit factor.
+		var maxDrawdown float64
+		stats.Dated.Series("Drawdown").ForEach(func(i int, val any) {
+			f := val.(float64)
+			if f > maxDrawdown {
+				maxDrawdown = f
+			}
+		})
+		profit := stats.Dated.Float("Profit", -1)
+		profitFactor := stats.Dated.Float("Profit", -1) / maxDrawdown
+		maxDrawdownPct := 100 * maxDrawdown / stats.Dated.Float("Equity", 0)
+
+		// Print a summary of the statistics to the console.
+		{
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+			fmt.Fprintln(w)
+			fmt.Fprintf(w, "Net Profit:\t$%.2f (%.2f%%)\t\n", profit, 100*profit/stats.Dated.Float("Equity", 0))
+			fmt.Fprintf(w, "Profit Factor:\t%.2f\t\n", profitFactor)
+			fmt.Fprintf(w, "Max Drawdown:\t$%.2f (%.2f%%)\t\n", maxDrawdown, maxDrawdownPct)
+			fmt.Fprintln(w)
+			w.Flush()
+		}
 
 		// Pick a datetime layout based on the frequency.
 		dateLayout := time.DateTime
@@ -302,10 +326,23 @@ type TestBroker struct {
 	Cash       float64
 	Leverage   float64
 	Spread     float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
+	Slippage   float64 // A percentage of the price to add when buying and subtract when selling.
 
 	candleCount int // The number of candles anyone outside this broker has seen. Also equal to the number of times Candles has been called.
 	orders      []Order
 	positions   []Position
+}
+
+func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
+	return &TestBroker{
+		DataBroker:  dataBroker,
+		Data:        data,
+		Cash:        cash,
+		Leverage:    Max(leverage, 1),
+		Spread:      spread,
+		Slippage:    0.005, // Price +/- 0.5%
+		candleCount: Max(startCandles, 1),
+	}
 }
 
 // CandleIndex returns the index of the current candle.
@@ -319,6 +356,16 @@ func (b *TestBroker) Advance() {
 	if b.candleCount < b.Data.Len() {
 		b.candleCount++
 	}
+}
+
+// Bid returns the price a seller pays for the current candle.
+func (b *TestBroker) Bid(_ string) float64 {
+	return b.Data.Close(b.CandleIndex())
+}
+
+// Ask returns the price a buyer pays for the current candle.
+func (b *TestBroker) Ask(_ string) float64 {
+	return b.Data.Close(b.CandleIndex()) + b.Spread
 }
 
 // Candles returns the last count candles for the given symbol and frequency. If count is greater than the number of candles, then a dataframe with zero rows is returned.
@@ -352,7 +399,16 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 			return nil, err
 		}
 	}
-	price := b.Data.Close(b.CandleIndex()) // Get the last close price.
+
+	var price float64
+	if units < 0 {
+		price = b.Bid("")
+	} else {
+		price = b.Ask("")
+	}
+
+	slippage := rand.Float64() * b.Slippage * price
+	price += slippage - slippage/2 // Get a slippage as +/- 50% of the slippage.
 
 	order := &TestOrder{
 		id:         strconv.Itoa(rand.Int()),
@@ -436,17 +492,6 @@ func (b *TestBroker) Positions() []Position {
 	return b.positions
 }
 
-func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
-	return &TestBroker{
-		DataBroker:  dataBroker,
-		Data:        data,
-		Cash:        cash,
-		Leverage:    Max(leverage, 1),
-		Spread:      spread,
-		candleCount: Max(startCandles, 1),
-	}
-}
-
 type TestPosition struct {
 	broker     *TestBroker
 	closed     bool
@@ -466,8 +511,12 @@ func (p *TestPosition) Close() error {
 		return ErrPositionClosed
 	}
 	p.closed = true
-	p.closePrice = p.broker.Data.Close(p.broker.CandleIndex()) - p.broker.Spread // Get the last close price.
-	p.broker.Cash += p.Value()                                                   // Return the value of the position to the broker.
+	if p.units < 0 {
+		p.closePrice = p.broker.Ask("") // Ask because we are short so we have to buy.
+	} else {
+		p.closePrice = p.broker.Bid("") // Ask because we are long so we have to sell.
+	}
+	p.broker.Cash += p.Value() // Return the value of the position to the broker.
 	p.broker.SignalEmit("PositionClosed", p)
 	return nil
 }
@@ -524,8 +573,13 @@ func (p *TestPosition) Value() float64 {
 	if p.closed {
 		return p.closePrice * p.units
 	}
-	bid := p.broker.Data.Close(p.broker.CandleIndex()) - p.broker.Spread
-	return bid * p.units
+	var price float64
+	if p.units < 0 {
+		price = p.broker.Ask("")
+	} else {
+		price = p.broker.Bid("")
+	}
+	return price * p.units
 }
 
 type TestOrder struct {

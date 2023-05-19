@@ -46,6 +46,7 @@ type Series interface {
 	Filter(f func(i int, val any) bool) Series    // Where returns a new Series with only the values that return true for the given function.
 	Map(f func(i int, val any) any) Series        // Map returns a new Series with the values modified by the given function.
 	MapReverse(f func(i int, val any) any) Series // MapReverse is the same as Map but it starts from the last item and works backwards.
+	ForEach(f func(i int, val any)) Series        // ForEach calls f for each item in the Series.
 
 	// Statistical functions.
 
@@ -128,6 +129,11 @@ func (s *AppliedSeries) MapReverse(f func(i int, val any) any) Series {
 	return NewAppliedSeries(s.Series.MapReverse(f), s.apply)
 }
 
+func (s *AppliedSeries) ForEach(f func(i int, val any)) Series {
+	_ = s.Series.ForEach(f)
+	return s
+}
+
 func (s *AppliedSeries) WithValueFunc(value func(i int) any) Series {
 	return &AppliedSeries{Series: s.Series.WithValueFunc(value), apply: s.apply}
 }
@@ -187,6 +193,11 @@ func (s *RollingSeries) Map(f func(i int, val any) any) Series {
 
 func (s *RollingSeries) MapReverse(f func(i int, val any) any) Series {
 	return NewRollingSeries(s.Series.MapReverse(f), s.period)
+}
+
+func (s *RollingSeries) ForEach(f func(i int, val any)) Series {
+	_ = s.Series.ForEach(f)
+	return s
 }
 
 // Average is an alias for Mean.
@@ -529,6 +540,13 @@ func (s *DataSeries) MapReverse(f func(i int, val any) any) Series {
 		series.SetValue(i, f(i, series.Value(i)))
 	}
 	return series
+}
+
+func (s *DataSeries) ForEach(f func(i int, val any)) Series {
+	for i := 0; i < s.Len(); i++ {
+		f(i, s.value(i))
+	}
+	return s
 }
 
 func (s *DataSeries) Rolling(period int) *RollingSeries {

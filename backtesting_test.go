@@ -90,6 +90,7 @@ func TestBacktestingBrokerFunctions(t *testing.T) {
 func TestBacktestingBrokerOrders(t *testing.T) {
 	data := newTestingDataframe()
 	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker.Slippage = 0
 
 	timeBeforeOrder := time.Now()
 	order, err := broker.MarketOrder("EUR_USD", 50_000, 0, 0) // Buy 50,000 USD for 1000 EUR with no stop loss or take profit
