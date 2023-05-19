@@ -20,7 +20,8 @@ import (
 var (
 	ErrEOF            = errors.New("end of the input data")
 	ErrNoData         = errors.New("no data")
-	ErrPositionClosed = errors.New("position closed")
+	ErrPositionClosed = errors.New("position already closed")
+	ErrZeroUnits      = errors.New("no amount of units specifed")
 )
 
 var _ Broker = (*TestBroker)(nil) // Compile-time interface check.
@@ -56,9 +57,11 @@ func Backtest(trader *Trader) {
 		{
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 			fmt.Fprintln(w)
+			fmt.Fprintf(w, "Timespan:\t%s\t\n", stats.Dated.Date(-1).Sub(stats.Dated.Date(0)).Round(time.Second))
 			fmt.Fprintf(w, "Net Profit:\t$%.2f (%.2f%%)\t\n", profit, 100*profit/stats.Dated.Float("Equity", 0))
 			fmt.Fprintf(w, "Profit Factor:\t%.2f\t\n", profitFactor)
 			fmt.Fprintf(w, "Max Drawdown:\t$%.2f (%.2f%%)\t\n", maxDrawdown, maxDrawdownPct)
+			fmt.Fprintf(w, "Spread collected:\t$%.2f\t\n", broker.spreadCollectedUSD)
 			fmt.Fprintln(w)
 			w.Flush()
 		}
@@ -328,9 +331,10 @@ type TestBroker struct {
 	Spread     float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
 	Slippage   float64 // A percentage of the price to add when buying and subtract when selling.
 
-	candleCount int // The number of candles anyone outside this broker has seen. Also equal to the number of times Candles has been called.
-	orders      []Order
-	positions   []Position
+	candleCount        int // The number of candles anyone outside this broker has seen. Also equal to the number of times Candles has been called.
+	orders             []Order
+	positions          []Position
+	spreadCollectedUSD float64 // Total amount of spread collected from trades.
 }
 
 func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
@@ -340,9 +344,14 @@ func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread fl
 		Cash:        cash,
 		Leverage:    Max(leverage, 1),
 		Spread:      spread,
-		Slippage:    0.005, // Price +/- 0.5%
+		Slippage:    0.005, // Price +/- up to 0.5% by a random amount.
 		candleCount: Max(startCandles, 1),
 	}
+}
+
+// SpreadCollected returns the total amount of spread collected from trades, in USD.
+func (b *TestBroker) SpreadCollected() float64 {
+	return b.spreadCollectedUSD
 }
 
 // CandleIndex returns the index of the current candle.
@@ -351,14 +360,54 @@ func (b *TestBroker) CandleIndex() int {
 }
 
 // Advance advances the test broker to the next candle in the input data. This should be done at the end of the
-// strategy loop.
+// strategy loop. This will also call Tick() to update orders and positions.
 func (b *TestBroker) Advance() {
 	if b.candleCount < b.Data.Len() {
 		b.candleCount++
 	}
+	b.Tick()
 }
 
-// Bid returns the price a seller pays for the current candle.
+func (b *TestBroker) Tick() {
+	// Check if the current candle's high and lows contain any take profits or stop losses.
+	high, low := b.Data.High(b.CandleIndex()), b.Data.Low(b.CandleIndex())
+	for _, any_p := range b.positions {
+		if any_p.Closed() {
+			continue
+		}
+		p := any_p.(*TestPosition)
+		price := b.Price("", p.units < 0) // We want to buy if we are short, and vice versa.
+
+		if p.trailingSLDist > 0 {
+			p.trailingSL = Max(p.trailingSL, price-p.trailingSLDist)
+		}
+
+		// Check if the position should be closed.
+		if p.takeProfit > 0 {
+			if (p.units > 0 && p.takeProfit <= high) || (p.units < 0 && p.takeProfit >= low) {
+				p.close(p.takeProfit, closeTypeTakeProfit)
+			}
+		} else if p.stopLoss > 0 {
+			if (p.units > 0 && p.stopLoss >= low) || (p.units < 0 && p.stopLoss <= high) {
+				p.close(p.stopLoss, closeTypeStopLoss)
+			}
+		} else if p.trailingSL > 0 {
+			if (p.units > 0 && p.trailingSL >= low) || (p.units < 0 && p.trailingSL <= high) {
+				p.close(p.trailingSL, closeTypeTrailingStop)
+			}
+		}
+	}
+}
+
+// Price returns the ask price if wantToBuy is true and the bid price if wantToBuy is false.
+func (b *TestBroker) Price(symbol string, wantToBuy bool) float64 {
+	if wantToBuy {
+		return b.Ask(symbol)
+	}
+	return b.Bid(symbol)
+}
+
+// Bid returns the price a seller receives for the current candle.
 func (b *TestBroker) Bid(_ string) float64 {
 	return b.Data.Close(b.CandleIndex())
 }
@@ -390,6 +439,9 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataF
 }
 
 func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takeProfit float64) (Order, error) {
+	if units == 0 {
+		return nil, ErrZeroUnits
+	}
 	if b.Data == nil { // The DataBroker could have data but nobody has fetched it, yet.
 		if b.DataBroker == nil {
 			return nil, ErrNoData
@@ -400,15 +452,15 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		}
 	}
 
-	var price float64
-	if units < 0 {
-		price = b.Bid("")
-	} else {
-		price = b.Ask("")
-	}
+	price := b.Price("", units > 0)
 
 	slippage := rand.Float64() * b.Slippage * price
 	price += slippage - slippage/2 // Get a slippage as +/- 50% of the slippage.
+
+	var trailingSL float64
+	if stopLoss < 0 {
+		trailingSL = -stopLoss
+	}
 
 	order := &TestOrder{
 		id:         strconv.Itoa(rand.Int()),
@@ -416,11 +468,15 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		position:   nil,
 		price:      price,
 		symbol:     symbol,
-		stopLoss:   stopLoss,
 		takeProfit: takeProfit,
 		time:       time.Now(),
 		orderType:  MarketOrder,
 		units:      units,
+	}
+	if trailingSL > 0 {
+		order.trailingSL = trailingSL
+	} else {
+		order.stopLoss = stopLoss
 	}
 
 	// Instantly fulfill the order.
@@ -431,10 +487,14 @@ func (b *TestBroker) MarketOrder(symbol string, units float64, stopLoss, takePro
 		id:         strconv.Itoa(rand.Int()),
 		leverage:   b.Leverage,
 		symbol:     symbol,
-		stopLoss:   stopLoss,
 		takeProfit: takeProfit,
 		time:       time.Now(),
 		units:      units,
+	}
+	if trailingSL > 0 {
+		order.position.trailingSLDist = trailingSL
+	} else {
+		order.position.stopLoss = stopLoss
 	}
 	b.Cash -= order.position.EntryValue()
 
@@ -493,36 +553,52 @@ func (b *TestBroker) Positions() []Position {
 }
 
 type TestPosition struct {
-	broker     *TestBroker
-	closed     bool
-	entryPrice float64
-	closePrice float64 // If zero, then position has not been closed.
-	id         string
-	leverage   float64
-	symbol     string
-	stopLoss   float64
-	takeProfit float64
-	time       time.Time
-	units      float64
+	broker         *TestBroker
+	closed         bool
+	entryPrice     float64
+	closePrice     float64 // If zero, then position has not been closed.
+	closeType      string  // SL, TS, TP
+	id             string
+	leverage       float64
+	symbol         string
+	trailingSL     float64 // the price of the trailing stop loss as assigned by broker Tick().
+	trailingSLDist float64 // serves to calculate the trailing stop loss at the broker.
+	stopLoss       float64
+	takeProfit     float64
+	time           time.Time
+	units          float64
 }
 
 func (p *TestPosition) Close() error {
+	p.close(p.broker.Price("", p.units < 0), closeTypeMarket)
+	return nil
+}
+
+const (
+	closeTypeMarket       = "M"
+	closeTypeStopLoss     = "SL"
+	closeTypeTrailingStop = "TS"
+	closeTypeTakeProfit   = "TP"
+)
+
+func (p *TestPosition) close(atPrice float64, closeType string) {
 	if p.closed {
-		return ErrPositionClosed
+		return
 	}
 	p.closed = true
-	if p.units < 0 {
-		p.closePrice = p.broker.Ask("") // Ask because we are short so we have to buy.
-	} else {
-		p.closePrice = p.broker.Bid("") // Ask because we are long so we have to sell.
-	}
+	p.closePrice = atPrice
+	p.closeType = closeType
 	p.broker.Cash += p.Value() // Return the value of the position to the broker.
+	p.broker.spreadCollectedUSD += p.broker.Spread * p.units
 	p.broker.SignalEmit("PositionClosed", p)
-	return nil
 }
 
 func (p *TestPosition) Closed() bool {
 	return p.closed
+}
+
+func (p *TestPosition) CloseType() string {
+	return p.closeType
 }
 
 func (p *TestPosition) EntryPrice() float64 {
@@ -553,6 +629,10 @@ func (p *TestPosition) Symbol() string {
 	return p.symbol
 }
 
+func (p *TestPosition) TrailingStop() float64 {
+	return p.trailingSL
+}
+
 func (p *TestPosition) StopLoss() float64 {
 	return p.stopLoss
 }
@@ -573,13 +653,7 @@ func (p *TestPosition) Value() float64 {
 	if p.closed {
 		return p.closePrice * p.units
 	}
-	var price float64
-	if p.units < 0 {
-		price = p.broker.Ask("")
-	} else {
-		price = p.broker.Bid("")
-	}
-	return price * p.units
+	return p.broker.Price("", p.units > 0) * p.units
 }
 
 type TestOrder struct {
@@ -588,6 +662,7 @@ type TestOrder struct {
 	position   *TestPosition
 	price      float64
 	symbol     string
+	trailingSL float64
 	stopLoss   float64
 	takeProfit float64
 	time       time.Time
@@ -621,6 +696,10 @@ func (o *TestOrder) Price() float64 {
 
 func (o *TestOrder) Symbol() string {
 	return o.symbol
+}
+
+func (o *TestOrder) TrailingStop() float64 {
+	return o.trailingSL
 }
 
 func (o *TestOrder) StopLoss() float64 {

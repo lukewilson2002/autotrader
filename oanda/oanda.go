@@ -42,6 +42,14 @@ func NewOandaBroker(token, accountID string, practice bool) *OandaBroker {
 	}
 }
 
+// Price returns the ask price if wantToBuy is true and the bid price if wantToBuy is false.
+func (b *OandaBroker) Price(symbol string, wantToBuy bool) float64 {
+	if wantToBuy {
+		return b.Ask(symbol)
+	}
+	return b.Bid(symbol)
+}
+
 func (b *OandaBroker) Bid(symbol string) float64 {
 	return 0
 }

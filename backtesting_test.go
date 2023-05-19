@@ -14,7 +14,7 @@ const testDataCSV = `date,open,high,low,close,volume
 2022-01-05,1.1,1.2,1.0,1.15,110
 2022-01-06,1.15,1.2,1.1,1.2,120
 2022-01-07,1.2,1.3,1.15,1.25,140
-2022-01-08,1.25,1.3,1.2,1.1,150
+2022-01-08,1.25,1.3,1.0,1.1,150
 2022-01-09,1.1,1.4,1.0,1.3,220`
 
 func newTestingDataframe() *DataFrame {
@@ -178,5 +178,100 @@ func TestBacktestingBrokerOrders(t *testing.T) {
 	}
 	if !EqualApprox(broker.PL(), 2500) {
 		t.Errorf("Expected broker PL to be 2500, got %f", broker.PL())
+	}
+}
+
+func TestBacktestingBrokerStopLimitOrders(t *testing.T) {
+	data := newTestingDataframe()
+	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker.Slippage = 0
+
+	order, err := broker.MarketOrder("", 10_000, 1.05, 1.25)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order == nil {
+		t.Fatal("Order is nil")
+	}
+	if order.StopLoss() != 1.05 {
+		t.Errorf("Expected stop loss to be 1.1, got %f", order.StopLoss())
+	}
+	if order.TakeProfit() != 1.25 {
+		t.Errorf("Expected take profit to be 1.25, got %f", order.TakeProfit())
+	}
+
+	position := order.Position()
+	if position == nil {
+		t.Fatal("Position is nil")
+	}
+	if position.StopLoss() != 1.05 {
+		t.Errorf("Expected stop loss to be 1.1, got %f", position.StopLoss())
+	}
+	if position.TakeProfit() != 1.25 {
+		t.Errorf("Expected take profit to be 1.25, got %f", position.TakeProfit())
+	}
+
+	broker.Advance()
+	broker.Advance() // Now we're at the third candle which hits our take profit
+
+	if position.Closed() != true {
+		t.Error("Expected position to be closed")
+	}
+	if position.ClosePrice() != 1.25 {
+		t.Errorf("Expected close price to be 1.25, got %f", position.ClosePrice())
+	}
+	if !EqualApprox(position.PL(), 1000) { // (1.25-1.15) * 10_000 = 1000
+		t.Errorf("Expected position PL to be 1000, got %f", position.PL())
+	}
+
+	broker.Advance() // 4th candle
+
+	order, err = broker.MarketOrder("", 10_000, -0.2, 1.4) // Long position with trailing stop loss of 0.2.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if order == nil {
+		t.Fatal("Order is nil")
+	}
+	if order.StopLoss() != 0 {
+		t.Errorf("Expected stop loss to be 0, got %f", order.StopLoss())
+	}
+	if order.TakeProfit() != 1.4 {
+		t.Errorf("Expected take profit to be 1.4, got %f", order.TakeProfit())
+	}
+	if !EqualApprox(order.TrailingStop(), 0.2) { // Orders return the distance to the trailing stop loss.
+		t.Errorf("Expected trailing stop to be 0.2, got %f", order.TrailingStop())
+	}
+
+	broker.Advance() // Cause the position to get updated.
+	position = order.Position()
+	if position == nil {
+		t.Fatal("Position is nil")
+	}
+	if position.Closed() {
+		t.Error("Expected position to be open")
+	}
+	if position.StopLoss() != 0 {
+		t.Errorf("Expected stop loss to be 0, got %f", position.StopLoss())
+	}
+	if position.TakeProfit() != 1.4 {
+		t.Errorf("Expected take profit to be 1.4, got %f", position.TakeProfit())
+	}
+	if !EqualApprox(position.TrailingStop(), 0.95) { // Positions return the actual trailing stop loss price.
+		t.Errorf("Expected trailing stop to be 0.95, got %f", position.TrailingStop())
+	}
+
+	for !position.Closed() {
+		broker.Advance() // Advance until position is closed.
+	}
+
+	if !EqualApprox(position.ClosePrice(), 1.05) {
+		t.Errorf("Expected close price to be 1.05, got %f", position.ClosePrice())
+	}
+	if !EqualApprox(position.PL(), -500) { // (1.05-1.1) * 10_000 = -500
+		t.Errorf("Expected position PL to be 1000, got %f", position.PL())
+	}
+	if position.CloseType() != closeTypeTrailingStop {
+		t.Errorf("Expected close type to be %q, got %q", closeTypeTrailingStop, position.CloseType())
 	}
 }
