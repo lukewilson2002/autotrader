@@ -19,7 +19,7 @@ type DataCSVLayout struct {
 	Volume      string
 }
 
-func EURUSD() (*DataFrame, error) {
+func EURUSD() (*Frame, error) {
 	return DataFrameFromCSVLayout("./EUR_USD Historical Data.csv", DataCSVLayout{
 		LatestFirst: true,
 		DateFormat:  "01/02/2006",
@@ -32,7 +32,7 @@ func EURUSD() (*DataFrame, error) {
 	})
 }
 
-func DataFrameFromCSVLayout(path string, layout DataCSVLayout) (*DataFrame, error) {
+func DataFrameFromCSVLayout(path string, layout DataCSVLayout) (*Frame, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func DataFrameFromCSVLayout(path string, layout DataCSVLayout) (*DataFrame, erro
 	return DataFrameFromCSVReaderLayout(f, layout)
 }
 
-func DataFrameFromCSVReaderLayout(r io.Reader, layout DataCSVLayout) (*DataFrame, error) {
+func DataFrameFromCSVReaderLayout(r io.Reader, layout DataCSVLayout) (*Frame, error) {
 	data, err := DataFrameFromCSVReader(r, layout.DateFormat, layout.LatestFirst)
 	if err != nil {
 		return data, err
@@ -73,11 +73,11 @@ func DataFrameFromCSVReaderLayout(r io.Reader, layout DataCSVLayout) (*DataFrame
 	return data, nil
 }
 
-func DataFrameFromCSVReader(r io.Reader, dateLayout string, readReversed bool) (*DataFrame, error) {
+func DataFrameFromCSVReader(r io.Reader, dateLayout string, readReversed bool) (*Frame, error) {
 	csv := csv.NewReader(r)
 	csv.LazyQuotes = true
 
-	seriesSlice := make([]Series, 0, 12)
+	seriesSlice := make([]*Series, 0, 12)
 
 	// Read the CSV file.
 	for {
@@ -91,7 +91,7 @@ func DataFrameFromCSVReader(r io.Reader, dateLayout string, readReversed bool) (
 		// Create the columns needed.
 		if len(seriesSlice) == 0 {
 			for _, val := range rec {
-				seriesSlice = append(seriesSlice, NewDataSeries(val))
+				seriesSlice = append(seriesSlice, NewSeries(val))
 			}
 			continue
 		}
@@ -116,5 +116,5 @@ func DataFrameFromCSVReader(r io.Reader, dateLayout string, readReversed bool) (
 		}
 	}
 
-	return NewDataFrame(seriesSlice...), nil
+	return NewFrame(seriesSlice...), nil
 }

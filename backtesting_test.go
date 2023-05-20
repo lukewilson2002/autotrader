@@ -17,7 +17,7 @@ const testDataCSV = `date,open,high,low,close,volume
 2022-01-08,1.25,1.3,1.0,1.1,150
 2022-01-09,1.1,1.4,1.0,1.3,220`
 
-func newTestingDataframe() *DataFrame {
+func newTestingDataframe() *Frame {
 	data, err := DataFrameFromCSVReaderLayout(strings.NewReader(testDataCSV), DataCSVLayout{
 		LatestFirst: false,
 		DateFormat:  "2006-01-02",

@@ -23,12 +23,12 @@ type Trader struct {
 	Log           *log.Logger
 	EOF           bool
 
-	data  *DataFrame
+	data  *Frame
 	sched *gocron.Scheduler
 	stats *TraderStats
 }
 
-func (t *Trader) Data() *DataFrame {
+func (t *Trader) Data() *Frame {
 	return t.data
 }
 
@@ -39,7 +39,7 @@ type TradeStat struct {
 
 // Performance (financial) reporting and statistics.
 type TraderStats struct {
-	Dated             *DataFrame
+	Dated             *Frame
 	returnsThisCandle float64
 	tradesThisCandle  []TradeStat
 }
@@ -90,13 +90,13 @@ func (t *Trader) Run() {
 
 func (t *Trader) Init() {
 	t.Strategy.Init(t)
-	t.stats.Dated = NewDataFrame(
-		NewDataSeries("Date"),
-		NewDataSeries("Equity"),
-		NewDataSeries("Profit"),
-		NewDataSeries("Drawdown"),
-		NewDataSeries("Returns"),
-		NewDataSeries("Trades"), // []float64 representing the number of units traded positive for buy, negative for sell.
+	t.stats.Dated = NewFrame(
+		NewSeries("Date"),
+		NewSeries("Equity"),
+		NewSeries("Profit"),
+		NewSeries("Drawdown"),
+		NewSeries("Returns"),
+		NewSeries("Trades"), // []float64 representing the number of units traded positive for buy, negative for sell.
 	)
 	t.stats.tradesThisCandle = make([]TradeStat, 0, 2)
 	t.Broker.SignalConnect("PositionClosed", t, func(args ...any) {

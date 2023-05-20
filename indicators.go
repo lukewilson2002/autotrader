@@ -7,20 +7,21 @@ import "math"
 // Traditionally, an RSI reading of 70 or above indicates an overbought condition, and a reading of 30 or below indicates an oversold condition.
 //
 // Typically, the RSI is calculated with a period of 14 days.
-func RSI(series Series, periods int) Series {
+func RSI(series *Series, periods int) *Series {
 	// Calculate the difference between each day's close and the previous day's close.
-	delta := series.MapReverse(func(i int, v interface{}) interface{} {
+	delta := series.Copy().Map(func(i int, v interface{}) interface{} {
 		if i == 0 {
 			return float64(0)
 		}
 		return v.(float64) - series.Value(i-1).(float64)
 	})
-	// Make two Series of gains and losses.
-	gains := delta.Map(func(i int, val interface{}) interface{} { return math.Max(val.(float64), 0) })
-	losses := delta.Map(func(i int, val interface{}) interface{} { return math.Abs(math.Min(val.(float64), 0)) })
 	// Calculate the average gain and average loss.
-	avgGain := gains.Rolling(periods).Mean()
-	avgLoss := losses.Rolling(periods).Mean()
+	avgGain := delta.Copy().
+		Map(func(i int, val interface{}) interface{} { return math.Max(val.(float64), 0) }).
+		Rolling(periods).Average()
+	avgLoss := delta.Copy().
+		Map(func(i int, val interface{}) interface{} { return math.Abs(math.Min(val.(float64), 0)) }).
+		Rolling(periods).Average()
 	// Calculate the RSI.
 	return avgGain.Map(func(i int, val interface{}) interface{} {
 		loss := avgLoss.Float(i)
@@ -44,29 +45,29 @@ func RSI(series Series, periods int) Series {
 //   - LeadingA
 //   - LeadingB
 //   - Lagging
-func Ichimoku(series Series, convPeriod, basePeriod, leadingPeriods int) *DataFrame {
+func Ichimoku(series *Series, convPeriod, basePeriod, leadingPeriods int) *Frame {
 	// Calculate the Conversion Line.
-	conv := series.Rolling(convPeriod).Max().Add(series.Rolling(convPeriod).Min()).
+	conv := series.Copy().Rolling(convPeriod).Max().Add(series.Copy().Rolling(convPeriod).Min()).
 		Map(func(i int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Base Line.
-	base := series.Rolling(basePeriod).Max().Add(series.Rolling(basePeriod).Min()).
+	base := series.Copy().Rolling(basePeriod).Max().Add(series.Copy().Rolling(basePeriod).Min()).
 		Map(func(i int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Leading Span A.
-	leadingA := conv.Rolling(leadingPeriods).Max().Add(base.Rolling(leadingPeriods).Max()).
+	leadingA := conv.Copy().Rolling(leadingPeriods).Max().Add(base.Copy().Rolling(leadingPeriods).Max()).
 		Map(func(i int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Leading Span B.
-	leadingB := series.Rolling(leadingPeriods).Max().Add(series.Rolling(leadingPeriods).Min()).
+	leadingB := series.Copy().Rolling(leadingPeriods).Max().Add(series.Copy().Rolling(leadingPeriods).Min()).
 		Map(func(i int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Lagging Span.
 	// lagging := series.Shift(-leadingPeriods)
 	// Return a DataFrame of the results.
-	return NewDataFrame(conv, base, leadingA, leadingB)
+	return NewFrame(conv, base, leadingA, leadingB)
 }

@@ -204,7 +204,7 @@ func Backtest(trader *Trader) {
 	}
 }
 
-func newKline(dohlcv Frame, trades Series, dateLayout string) *charts.Kline {
+func newKline(dohlcv *Frame, trades *Series, dateLayout string) *charts.Kline {
 	kline := charts.NewKLine()
 
 	x := make([]string, dohlcv.Len())
@@ -284,7 +284,7 @@ func newKline(dohlcv Frame, trades Series, dateLayout string) *charts.Kline {
 	return kline
 }
 
-func lineDataFromSeries(s Series) []opts.LineData {
+func lineDataFromSeries(s *Series) []opts.LineData {
 	if s == nil || s.Len() == 0 {
 		return []opts.LineData{}
 	}
@@ -295,7 +295,7 @@ func lineDataFromSeries(s Series) []opts.LineData {
 	return data
 }
 
-func seriesStringArray(s Series, dateLayout string) []string {
+func seriesStringArray(s *Series, dateLayout string) []string {
 	if s == nil || s.Len() == 0 {
 		return []string{}
 	}
@@ -325,7 +325,7 @@ func seriesStringArray(s Series, dateLayout string) []string {
 type TestBroker struct {
 	SignalManager
 	DataBroker Broker
-	Data       *DataFrame
+	Data       *Frame
 	Cash       float64
 	Leverage   float64
 	Spread     float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
@@ -337,7 +337,7 @@ type TestBroker struct {
 	spreadCollectedUSD float64 // Total amount of spread collected from trades.
 }
 
-func NewTestBroker(dataBroker Broker, data *DataFrame, cash, leverage, spread float64, startCandles int) *TestBroker {
+func NewTestBroker(dataBroker Broker, data *Frame, cash, leverage, spread float64, startCandles int) *TestBroker {
 	return &TestBroker{
 		DataBroker:  dataBroker,
 		Data:        data,
@@ -445,12 +445,12 @@ func (b *TestBroker) Ask(_ string) float64 {
 // Candles returns the last count candles for the given symbol and frequency. If count is greater than the number of candles, then a dataframe with zero rows is returned.
 //
 // If the TestBroker has a data broker set, then it will use that to get candles. Otherwise, it will return the candles from the data that was set. The first call to Candles will fetch candles from the data broker if it is set, so it is recommended to set the data broker before the first call to Candles and to call Candles the first time with the number of candles you want to fetch.
-func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataFrame, error) {
+func (b *TestBroker) Candles(symbol string, frequency string, count int) (*Frame, error) {
 	start := Max(Max(b.candleCount, 1)-count, 0)
 	adjCount := b.candleCount - start
 
 	if b.Data != nil && b.candleCount >= b.Data.Len() { // We have data and we are at the end of it.
-		return b.Data.Copy(-count, -1).(*DataFrame), ErrEOF // Return the last count candles.
+		return b.Data.CopyRange(-count, -1), ErrEOF // Return the last count candles.
 	} else if b.DataBroker != nil && b.Data == nil { // We have a data broker but no data.
 		candles, err := b.DataBroker.Candles(symbol, frequency, count)
 		if err != nil {
@@ -460,7 +460,7 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*DataF
 	} else if b.Data == nil { // Both b.DataBroker and b.Data are nil.
 		return nil, ErrNoData
 	}
-	return b.Data.Copy(start, adjCount).(*DataFrame), nil
+	return b.Data.CopyRange(start, adjCount), nil
 }
 
 func (b *TestBroker) Order(orderType OrderType, symbol string, units, price, stopLoss, takeProfit float64) (Order, error) {

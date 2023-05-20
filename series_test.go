@@ -6,7 +6,7 @@ import (
 )
 
 func TestDataSeries(t *testing.T) {
-	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 	if series.Len() != 10 {
 		t.Fatalf("Expected 10 rows, got %d", series.Len())
 	}
@@ -20,7 +20,7 @@ func TestDataSeries(t *testing.T) {
 		}
 	}
 
-	last5 := series.Copy(-5, -1)
+	last5 := series.CopyRange(-5, -1)
 	if last5.Len() != 5 {
 		t.Fatalf("Expected 5 rows, got %d", last5.Len())
 	}
@@ -34,7 +34,7 @@ func TestDataSeries(t *testing.T) {
 		t.Errorf("Expected data to be copied, not referenced")
 	}
 
-	outOfBounds := series.Copy(10, -1)
+	outOfBounds := series.CopyRange(10, -1)
 	if outOfBounds == nil {
 		t.Fatal("Expected non-nil series, got nil")
 	}
@@ -68,8 +68,8 @@ func TestDataSeries(t *testing.T) {
 }
 
 func TestDataSeriesFunctional(t *testing.T) {
-	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
-	doubled := series.Map(func(_ int, val any) any {
+	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	doubled := series.Copy().Map(func(_ int, val any) any {
 		return val.(float64) * 2
 	})
 	if doubled.Len() != 10 {
@@ -86,7 +86,7 @@ func TestDataSeriesFunctional(t *testing.T) {
 	}
 	series.SetValue(0, 1.0) // Reset the value.
 
-	evens := series.Filter(func(_ int, val any) bool {
+	evens := series.Copy().Filter(func(_ int, val any) bool {
 		return EqualApprox(math.Mod(val.(float64), 2), 0)
 	})
 	if evens.Len() != 5 {
@@ -101,7 +101,7 @@ func TestDataSeriesFunctional(t *testing.T) {
 		t.Fatalf("Expected series to still have 10 rows, got %d", series.Len())
 	}
 
-	diffed := series.MapReverse(func(i int, v any) any {
+	diffed := series.Copy().Map(func(i int, v any) any {
 		if i == 0 {
 			return 0.0
 		}
@@ -120,47 +120,12 @@ func TestDataSeriesFunctional(t *testing.T) {
 	}
 }
 
-func TestAppliedSeries(t *testing.T) {
-	underlying := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
-	applied := NewAppliedSeries(underlying, func(_ *AppliedSeries, _ int, val any) any {
-		return val.(float64) * 2
-	})
-
-	if applied.Len() != 10 {
-		t.Fatalf("Expected 10 rows, got %d", applied.Len())
-	}
-	for i := 0; i < 10; i++ {
-		if val := applied.Float(i); val != float64(i+1)*2 {
-			t.Errorf("(%d)\tExpected %f, got %v", i, float64(i+1)*2, val)
-		}
-	}
-
-	// Test that the underlying series is not modified.
-	if underlying.Len() != 10 {
-		t.Fatalf("Expected 10 rows, got %d", underlying.Len())
-	}
-	for i := 0; i < 10; i++ {
-		if val := underlying.Float(i); val != float64(i+1) {
-			t.Errorf("(%d)\tExpected %f, got %v", i, float64(i+1), val)
-		}
-	}
-
-	// Test that the underlying series is not modified when the applied series is modified.
-	applied.SetValue(0, 100.0)
-	if underlying.Float(0) != 1 {
-		t.Errorf("Expected 1, got %v", underlying.Float(0))
-	}
-	if applied.Float(0) != 200 {
-		t.Errorf("Expected 200, got %v", applied.Float(0))
-	}
-}
-
 func TestRollingAppliedSeries(t *testing.T) {
 	// Test rolling average.
-	series := NewDataSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 
 	sma5Expected := []float64{1, 1.5, 2, 2.5, 3, 4, 5, 6, 7, 8}
-	sma5 := (Series)(series.Rolling(5).Average()) // Take the 5 period moving average and cast it to Series.
+	sma5 := series.Copy().Rolling(5).Average() // Take the 5 period moving average and cast it to Series.
 	if sma5.Len() != 10 {
 		t.Fatalf("Expected 10 rows, got %d", sma5.Len())
 	}
@@ -174,7 +139,7 @@ func TestRollingAppliedSeries(t *testing.T) {
 	}
 
 	ema5Expected := []float64{1, 1.3333333333333333, 1.8888888888888888, 2.5925925925925926, 3.3950617283950617, 4.395061728395062, 5.395061728395062, 6.395061728395062, 7.395061728395062, 8.395061728395062}
-	ema5 := (Series)(series.Rolling(5).EMA()) // Take the 5 period exponential moving average.
+	ema5 := series.Rolling(5).EMA() // Take the 5 period exponential moving average.
 	if ema5.Len() != 10 {
 		t.Fatalf("Expected 10 rows, got %d", ema5.Len())
 	}

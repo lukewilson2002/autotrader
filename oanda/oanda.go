@@ -58,7 +58,7 @@ func (b *OandaBroker) Ask(symbol string) float64 {
 	return 0
 }
 
-func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.DataFrame, error) {
+func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.Frame, error) {
 	req, err := http.NewRequest("GET", b.baseUrl+"/v3/accounts/"+b.accountID+"/instruments/"+symbol+"/candles", nil)
 	if err != nil {
 		return nil, err
@@ -113,11 +113,11 @@ func (b *OandaBroker) Positions() []auto.Position {
 func (b *OandaBroker) fetchAccountUpdates() {
 }
 
-func newDataframe(candles *CandlestickResponse) (*auto.DataFrame, error) {
+func newDataframe(candles *CandlestickResponse) (*auto.Frame, error) {
 	if candles == nil {
 		return nil, fmt.Errorf("candles is nil or empty")
 	}
-	data := auto.NewDOHLCVDataFrame()
+	data := auto.NewDOHLCVFrame()
 	for _, candle := range candles.Candles {
 		if candle.Mid == nil {
 			return nil, fmt.Errorf("mid is nil or empty")

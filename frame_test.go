@@ -6,7 +6,7 @@ import (
 )
 
 func TestDataFrameSeriesManagement(t *testing.T) {
-	data := NewDataFrame(NewDataSeries("A"), NewDataSeries("B"))
+	data := NewFrame(NewSeries("A"), NewSeries("B"))
 	if data.Len() != 0 {
 		t.Fatalf("Expected 0 rows, got %d", data.Len())
 	}
@@ -14,7 +14,7 @@ func TestDataFrameSeriesManagement(t *testing.T) {
 		t.Fatalf("Expected data to contain A and B columns")
 	}
 
-	err := data.PushSeries(NewDataSeries("C"))
+	err := data.PushSeries(NewSeries("C"))
 	if err != nil {
 		t.Fatalf("Expected no error, got %s", err)
 	}
@@ -69,7 +69,7 @@ func TestDataFrameSeriesManagement(t *testing.T) {
 }
 
 func TestDOHLCVDataFrame(t *testing.T) {
-	data := NewDOHLCVDataFrame()
+	data := NewDOHLCVFrame()
 	if !data.ContainsDOHLCV() {
 		t.Fatalf("Expected data to contain DOHLCV columns")
 	}
