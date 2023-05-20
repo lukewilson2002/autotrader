@@ -7,28 +7,28 @@ import "math"
 // Traditionally, an RSI reading of 70 or above indicates an overbought condition, and a reading of 30 or below indicates an oversold condition.
 //
 // Typically, the RSI is calculated with a period of 14 days.
-func RSI(series *Series, periods int) *Series {
+func RSI(series *FloatSeries, periods int) *FloatSeries {
 	// Calculate the difference between each day's close and the previous day's close.
-	delta := series.Copy().Map(func(i int, v interface{}) interface{} {
+	delta := series.Copy().MapReverse(func(i int, v float64) float64 {
 		if i == 0 {
-			return float64(0)
+			return 0
 		}
-		return v.(float64) - series.Value(i-1).(float64)
+		return v - series.Value(i-1)
 	})
 	// Calculate the average gain and average loss.
-	avgGain := delta.Copy().
-		Map(func(i int, val interface{}) interface{} { return math.Max(val.(float64), 0) }).
-		Rolling(periods).Average()
-	avgLoss := delta.Copy().
-		Map(func(i int, val interface{}) interface{} { return math.Abs(math.Min(val.(float64), 0)) }).
-		Rolling(periods).Average()
+	avgGain := &FloatSeries{delta.Copy().
+		Map(func(i int, val float64) float64 { return math.Max(val, 0) }).
+		Rolling(periods).Average()}
+	avgLoss := &FloatSeries{delta.Copy().
+		Map(func(i int, val float64) float64 { return math.Abs(math.Min(val, 0)) }).
+		Rolling(periods).Average()}
 	// Calculate the RSI.
-	return avgGain.Map(func(i int, val interface{}) interface{} {
+	return avgGain.Map(func(i int, val float64) float64 {
 		loss := avgLoss.Float(i)
 		if loss == 0 {
 			return float64(100)
 		}
-		return float64(100. - 100./(1.+val.(float64)/loss))
+		return float64(100. - 100./(1.+val/loss))
 	})
 }
 
