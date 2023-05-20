@@ -28,7 +28,7 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 		if loss == 0 {
 			return float64(100)
 		}
-		return float64(100. - 100./(1.+val/loss))
+		return float64(100 - 100/(1+val/loss))
 	})
 }
 
@@ -45,7 +45,7 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 //   - LeadingA
 //   - LeadingB
 //   - Lagging
-func Ichimoku(series *Series, convPeriod, basePeriod, leadingPeriods int) *Frame {
+func Ichimoku(series *FloatSeries, convPeriod, basePeriod, leadingPeriods int) *Frame {
 	// Calculate the Conversion Line.
 	conv := series.Copy().Rolling(convPeriod).Max().Add(series.Copy().Rolling(convPeriod).Min()).
 		Map(func(i int, val any) any {
