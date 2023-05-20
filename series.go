@@ -1,11 +1,11 @@
 package autotrader
 
 import (
-	"fmt"
 	"math"
 	"sort"
 	"time"
 
+	anymath "github.com/spatialcurrent/go-math/pkg/math"
 	"golang.org/x/exp/slices"
 )
 
@@ -41,12 +41,27 @@ type Series interface {
 	SetValue(i int, val any) Series
 	Push(val any) Series
 
+	// Operations.
+
+	// Add returns a new Series with the values of the original Series added to the values of the other Series. It will add each value up to the length of the original Series or the other Series, whichever contains fewer values. The number of values in the new Series will remain equal to the number of values in the original Series.
+	Add(other Series) Series
+	// Sub returns a new Series with the values of the original Series subtracted from the values of the other Series. It will subtract each value up to the length of the original Series or the other Series, whichever contains fewer values. The number of values in the new Series will remain equal to the number of values in the original Series.
+	Sub(other Series) Series
+	// Mul returns a new Series with the values of the original Series multiplied by the values of the other Series. It will multiply each value up to the length of the original Series or the other Series, whichever contains fewer values. The number of values in the new Series will remain equal to the number of values in the original Series.
+	Mul(other Series) Series
+	// Div returns a new Series with the values of the original Series divided by the values of the other Series. It will divide each value up to the length of the original Series or the other Series, whichever contains fewer values. The number of values in the new Series will remain equal to the number of values in the original Series.
+	Div(other Series) Series
+
 	// Functional.
 
 	Filter(f func(i int, val any) bool) Series    // Where returns a new Series with only the values that return true for the given function.
 	Map(f func(i int, val any) any) Series        // Map returns a new Series with the values modified by the given function.
 	MapReverse(f func(i int, val any) any) Series // MapReverse is the same as Map but it starts from the last item and works backwards.
 	ForEach(f func(i int, val any)) Series        // ForEach calls f for each item in the Series.
+	MaxFloat() float64                            // MaxFloat returns the maximum of all floats and integers as a float64.
+	MaxInt() int                                  // MaxInt returns the maximum of all integers as an int.
+	MinFloat() float64                            // MinFloat returns the minimum of all floats and integers as a float64.
+	MinInt() int                                  // MinInt returns the minimum of all integers as an int.
 
 	// Statistical functions.
 
@@ -117,6 +132,22 @@ func (s *AppliedSeries) Push(val any) Series {
 	return s
 }
 
+func (s *AppliedSeries) Add(other Series) Series {
+	return NewAppliedSeries(s.Series.Add(other), s.apply)
+}
+
+func (s *AppliedSeries) Sub(other Series) Series {
+	return NewAppliedSeries(s.Series.Sub(other), s.apply)
+}
+
+func (s *AppliedSeries) Mul(other Series) Series {
+	return NewAppliedSeries(s.Series.Mul(other), s.apply)
+}
+
+func (s *AppliedSeries) Div(other Series) Series {
+	return NewAppliedSeries(s.Series.Div(other), s.apply)
+}
+
 func (s *AppliedSeries) Filter(f func(i int, val any) bool) Series {
 	return NewAppliedSeries(s.Series.Filter(f), s.apply)
 }
@@ -183,6 +214,22 @@ func (s *RollingSeries) Push(val any) Series {
 	return s
 }
 
+func (s *RollingSeries) Add(other Series) Series {
+	return NewRollingSeries(s.Series.Add(other), s.period)
+}
+
+func (s *RollingSeries) Sub(other Series) Series {
+	return NewRollingSeries(s.Series.Sub(other), s.period)
+}
+
+func (s *RollingSeries) Mul(other Series) Series {
+	return NewRollingSeries(s.Series.Mul(other), s.period)
+}
+
+func (s *RollingSeries) Div(other Series) Series {
+	return NewRollingSeries(s.Series.Div(other), s.period)
+}
+
 func (s *RollingSeries) Filter(f func(i int, val any) bool) Series {
 	return NewRollingSeries(s.Series.Filter(f), s.period)
 }
@@ -200,110 +247,252 @@ func (s *RollingSeries) ForEach(f func(i int, val any)) Series {
 	return s
 }
 
+// Max returns an AppliedSeries that returns the maximum value of the rolling period as a float64 or 0 if the requested period is empty.
+//
+// Will work with all signed int and float types. Ignores all other values.
+func (s *RollingSeries) Max() *AppliedSeries {
+	return NewAppliedSeries(s, func(_ *AppliedSeries, _ int, v any) any {
+		switch v := v.(type) {
+		case []any:
+			if len(v) == 0 {
+				return nil
+			}
+			max := math.Inf(-1)
+			for _, v := range v {
+				switch v := v.(type) {
+				case float64:
+					if v > max {
+						max = v
+					}
+				case float32:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				case int:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				case int64:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				case int32:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				case int16:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				case int8:
+					if float64(v) > max {
+						max = float64(v)
+					}
+				}
+				return max
+			}
+		}
+		panic("unreachable")
+	})
+}
+
+// Min returns an AppliedSeries that returns the minimum value of the rolling period as a float64 or 0 if the requested period is empty.
+//
+// Will work with all signed int and float types. Ignores all other values.
+func (s *RollingSeries) Min() *AppliedSeries {
+	return NewAppliedSeries(s, func(_ *AppliedSeries, _ int, v any) any {
+		switch v := v.(type) {
+		case []any:
+			if len(v) == 0 {
+				return nil
+			}
+			min := math.Inf(1)
+			for _, v := range v {
+				switch v := v.(type) {
+				case float64:
+					if v < min {
+						min = v
+					}
+				case float32:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				case int:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				case int64:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				case int32:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				case int16:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				case int8:
+					if float64(v) < min {
+						min = float64(v)
+					}
+				}
+				return min
+			}
+		}
+		panic("unreachable")
+	})
+}
+
 // Average is an alias for Mean.
 func (s *RollingSeries) Average() *AppliedSeries {
 	return s.Mean()
 }
 
+// Mean returns the mean of the rolling period as a float64 or 0 if the period requested is empty.
+//
+// Will work with all signed int and float types. Ignores all other values.
 func (s *RollingSeries) Mean() *AppliedSeries {
 	return NewAppliedSeries(s, func(_ *AppliedSeries, _ int, v any) any {
 		switch v := v.(type) {
 		case []any:
 			if len(v) == 0 {
-				return nil
+				return 0
 			}
-			switch v[0].(type) {
-			case float64:
-				var sum float64
-				for _, v := range v {
-					sum += v.(float64)
+			var sum float64
+			for _, v := range v {
+				switch v := v.(type) {
+				case float64:
+					sum += v
+				case float32:
+					sum += float64(v)
+				case int:
+					sum += float64(v)
+				case int64:
+					sum += float64(v)
+				case int32:
+					sum += float64(v)
+				case int16:
+					sum += float64(v)
+				case int8:
+					sum += float64(v)
 				}
-				return sum / float64(len(v))
-			case int64:
-				var sum int64
-				for _, v := range v {
-					sum += v.(int64)
-				}
-				return sum / int64(len(v))
-			default:
-				return v[len(v)-1] // Do nothing
 			}
-		default:
-			panic(fmt.Sprintf("expected a slice of values, got %t", v))
+			return sum / float64(len(v))
 		}
+		panic("unreachable")
 	})
 }
 
+// EMA returns the exponential moving average of the period as a float64 or 0 if the period requested is empty.
+//
+// Will work with all signed int and float types. Ignores all other values.
 func (s *RollingSeries) EMA() *AppliedSeries {
 	return NewAppliedSeries(s, func(_ *AppliedSeries, i int, v any) any {
 		switch v := v.(type) {
 		case []any:
 			if len(v) == 0 {
-				return nil
+				return 0
 			}
-			switch v[0].(type) {
-			case float64:
-				ema := v[0].(float64)
-				for _, v := range v[1:] {
-					ema += (v.(float64) - ema) * 2 / (float64(s.period) + 1)
+			var ema float64
+			period := float64(s.period)
+			first := true
+			for _, v := range v {
+				var f float64
+				switch v := v.(type) {
+				case float64:
+					f = v
+				case float32:
+					f = float64(v)
+				case int:
+					f = float64(v)
+				case int64:
+					f = float64(v)
+				case int32:
+					f = float64(v)
+				case int16:
+					f = float64(v)
+				case int8:
+					f = float64(v)
+				default:
+					continue
 				}
-				return ema
-			case int64:
-				ema := v[0].(int64)
-				for _, v := range v[1:] {
-					ema += (v.(int64) - ema) * 2 / (int64(s.period) + 1)
+				if first { // Set as first value
+					ema = f
+					first = false
+					continue
 				}
-				return ema
-			default: // string, time.Time
-				return v[len(v)-1] // Do nothing
+				ema += (f - ema) * 2 / (period + 1)
 			}
-		default:
-			panic(fmt.Sprintf("expected a slice of values, got %t", v))
+			return ema
 		}
+		panic("unreachable")
 	})
 }
 
+// Median returns the median of the period as a float64 or 0 if the period requested is empty.
+//
+// Will work with float64 and int. Ignores all other values.
 func (s *RollingSeries) Median() *AppliedSeries {
 	return NewAppliedSeries(s, func(_ *AppliedSeries, _ int, v any) any {
 		switch v := v.(type) {
 		case []any:
 			if len(v) == 0 {
-				return nil
+				return 0
 			}
-			switch v[0].(type) {
+
+			var offenders int
+			slices.SortFunc(v, func(a, b any) bool {
+				less, offender := LessAny(a, b)
+				// Sort offenders to the end.
+				if offender == a {
+					offenders++
+					return false
+				} else if offender == b {
+					offenders++
+					return true
+				}
+				return less
+			})
+			v = v[:len(v)-offenders] // Cut out the offenders.
+
+			v1 := v[len(v)/2-1]
+			v2 := v[len(v)/2]
+			if len(v)%2 == 0 {
+				switch n1 := v1.(type) {
+				case float64:
+					switch n2 := v2.(type) {
+					case float64:
+						return (n1 + n2) / 2
+					case int:
+						return (n1 + float64(n2)) / 2
+					}
+				case int:
+					switch n2 := v2.(type) {
+					case float64:
+						return (float64(n1) + n2) / 2
+					case int:
+						return (float64(n1) + float64(n2)) / 2
+					}
+				default:
+					return 0
+				}
+			}
+			switch vMid := v[len(v)/2].(type) {
 			case float64:
-				if len(v) == 0 {
-					return float64(0)
-				}
-				slices.SortFunc(v, func(a, b any) bool {
-					x, y := a.(float64), b.(float64)
-					return x < y || (math.IsNaN(x) && !math.IsNaN(y))
-				})
-				if len(v)%2 == 0 {
-					return (v[len(v)/2-1].(float64) + v[len(v)/2].(float64)) / 2
-				}
-				return v[len(v)/2]
-			case int64:
-				if len(v) == 0 {
-					return int64(0)
-				}
-				slices.SortFunc(v, func(a, b any) bool {
-					x, y := a.(int64), b.(int64)
-					return x < y
-				})
-				if len(v)%2 == 0 {
-					return (v[len(v)/2-1].(int64) + v[len(v)/2].(int64)) / 2
-				}
-				return v[len(v)/2]
-			default: // string, time.Time
-				return v[len(v)-1] // Do nothing
+				return vMid
+			case int:
+				return float64(vMid)
+			default:
+				panic("unreachable") // Offenders are pushed to the back of the slice and ignored.
 			}
-		default:
-			panic(fmt.Sprintf("expected a slice of values, got %t", v))
 		}
+		panic("unreachable")
 	})
 }
 
+// StdDev returns the standard deviation of the period as a float64 or 0 if the period requested is empty.
 func (s *RollingSeries) StdDev() *AppliedSeries {
 	return NewAppliedSeries(s, func(_ *AppliedSeries, i int, v any) any {
 		switch v := v.(type) {
@@ -311,27 +500,36 @@ func (s *RollingSeries) StdDev() *AppliedSeries {
 			if len(v) == 0 {
 				return nil
 			}
-			switch v[0].(type) {
-			case float64:
-				mean := s.Mean().Value(i).(float64) // Take the mean of the last period values for the current index
-				var sum float64
-				for _, v := range v {
-					sum += (v.(float64) - mean) * (v.(float64) - mean)
+
+			mean := s.Mean().Value(i).(float64) // Take the mean of the last period values for the current index
+			var sum float64
+			var ignored int
+			for _, v := range v {
+				switch v := v.(type) {
+				case float64:
+					sum += (v - mean) * (v - mean)
+				case float32:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				case int:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				case int64:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				case int32:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				case int16:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				case int8:
+					sum += (float64(v) - mean) * (float64(v) - mean)
+				default:
+					ignored++
 				}
-				return math.Sqrt(sum / float64(len(v)))
-			case int64:
-				mean := s.Mean().Value(i).(int64)
-				var sum int64
-				for _, v := range v {
-					sum += (v.(int64) - mean) * (v.(int64) - mean)
-				}
-				return int64(math.Sqrt(float64(sum) / float64(len(v))))
-			default: // A slice of something else, just return the last value
-				return v[len(v)-1] // Do nothing
 			}
-		default:
-			panic(fmt.Sprintf("expected a slice of values, got %t", v))
+			if ignored >= len(v) {
+				return 0
+			}
+			return math.Sqrt(sum / float64(len(v)-ignored))
 		}
+		panic("unreachable")
 	})
 }
 
@@ -530,6 +728,58 @@ func (s *DataSeries) Time(i int) time.Time {
 	}
 }
 
+func (s *DataSeries) Add(other Series) Series {
+	rows := make([]any, 0, s.Len())
+	copy(rows, s.data)
+	for i := 0; i < s.Len() && i < other.Len(); i++ {
+		val, err := anymath.Add(s.value(i), other.Value(i))
+		if err != nil {
+			continue
+		}
+		rows[i] = val
+	}
+	return NewDataSeries(s.name, rows...)
+}
+
+func (s *DataSeries) Sub(other Series) Series {
+	rows := make([]any, 0, s.Len())
+	copy(rows, s.data)
+	for i := 0; i < s.Len() && i < other.Len(); i++ {
+		val, err := anymath.Subtract(s.value(i), other.Value(i))
+		if err != nil {
+			continue
+		}
+		rows[i] = val
+	}
+	return NewDataSeries(s.name, rows...)
+}
+
+func (s *DataSeries) Mul(other Series) Series {
+	rows := make([]any, 0, s.Len())
+	copy(rows, s.data)
+	for i := 0; i < s.Len() && i < other.Len(); i++ {
+		val, err := anymath.Multiply(s.value(i), other.Value(i))
+		if err != nil {
+			continue
+		}
+		rows[i] = val
+	}
+	return NewDataSeries(s.name, rows...)
+}
+
+func (s *DataSeries) Div(other Series) Series {
+	rows := make([]any, 0, s.Len())
+	copy(rows, s.data)
+	for i := 0; i < s.Len() && i < other.Len(); i++ {
+		val, err := anymath.Divide(s.value(i), other.Value(i))
+		if err != nil {
+			continue
+		}
+		rows[i] = val
+	}
+	return NewDataSeries(s.name, rows...)
+}
+
 func (s *DataSeries) Filter(f func(i int, val any) bool) Series {
 	series := NewDataSeries(s.name, make([]any, 0, s.Len())...)
 	for i := 0; i < s.Len(); i++ {
@@ -563,6 +813,86 @@ func (s *DataSeries) ForEach(f func(i int, val any)) Series {
 		f(i, s.value(i))
 	}
 	return s
+}
+
+func (s *DataSeries) MaxFloat() float64 {
+	if s.Len() == 0 {
+		return 0
+	}
+	max := math.Inf(-1)
+	for i := 0; i < s.Len(); i++ {
+		switch val := s.value(i).(type) {
+		case float64:
+			if val > max {
+				max = val
+			}
+		case int:
+			if float64(val) > max {
+				max = float64(val)
+			}
+		}
+	}
+	return max
+}
+
+func (s *DataSeries) MinFloat() float64 {
+	if s.Len() == 0 {
+		return 0
+	}
+	min := math.Inf(1)
+	for i := 0; i < s.Len(); i++ {
+		switch val := s.value(i).(type) {
+		case float64:
+			if val < min {
+				min = val
+			}
+		case int:
+			if float64(val) < min {
+				min = float64(val)
+			}
+		}
+	}
+	return min
+}
+
+func (s *DataSeries) MaxInt() int {
+	if s.Len() == 0 {
+		return 0
+	}
+	max := math.MinInt64
+	for i := 0; i < s.Len(); i++ {
+		switch val := s.value(i).(type) {
+		case int:
+			if val > max {
+				max = val
+			}
+		case float64:
+			if int(val) > max {
+				max = int(val)
+			}
+		}
+	}
+	return max
+}
+
+func (s *DataSeries) MinInt() int {
+	if s.Len() == 0 {
+		return 0
+	}
+	min := math.MaxInt64
+	for i := 0; i < s.Len(); i++ {
+		switch val := s.value(i).(type) {
+		case int:
+			if val < min {
+				min = val
+			}
+		case float64:
+			if int(val) < min {
+				min = int(val)
+			}
+		}
+	}
+	return min
 }
 
 func (s *DataSeries) Rolling(period int) *RollingSeries {

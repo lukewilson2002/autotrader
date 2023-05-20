@@ -30,3 +30,43 @@ func RSI(series Series, periods int) Series {
 		return float64(100. - 100./(1.+val.(float64)/loss))
 	})
 }
+
+// Ichimoku calculates the Ichimoku Cloud for a given Series. Returns a DataFrame of the same length as the input with float64 values. The series input must contain only float64 values, which are traditionally the close prices.
+//
+// The standard values:
+//   - convPeriod:     9
+//   - basePeriod:     26
+//   - leadingPeriods: 52
+//
+// DataFrame columns:
+//   - Conversion
+//   - Base
+//   - LeadingA
+//   - LeadingB
+//   - Lagging
+func Ichimoku(series Series, convPeriod, basePeriod, leadingPeriods int) *DataFrame {
+	// Calculate the Conversion Line.
+	conv := series.Rolling(convPeriod).Max().Add(series.Rolling(convPeriod).Min()).
+		Map(func(i int, val any) any {
+			return val.(float64) / float64(2)
+		})
+	// Calculate the Base Line.
+	base := series.Rolling(basePeriod).Max().Add(series.Rolling(basePeriod).Min()).
+		Map(func(i int, val any) any {
+			return val.(float64) / float64(2)
+		})
+	// Calculate the Leading Span A.
+	leadingA := conv.Rolling(leadingPeriods).Max().Add(base.Rolling(leadingPeriods).Max()).
+		Map(func(i int, val any) any {
+			return val.(float64) / float64(2)
+		})
+	// Calculate the Leading Span B.
+	leadingB := series.Rolling(leadingPeriods).Max().Add(series.Rolling(leadingPeriods).Min()).
+		Map(func(i int, val any) any {
+			return val.(float64) / float64(2)
+		})
+	// Calculate the Lagging Span.
+	// lagging := series.Shift(-leadingPeriods)
+	// Return a DataFrame of the results.
+	return NewDataFrame(conv, base, leadingA, leadingB)
+}

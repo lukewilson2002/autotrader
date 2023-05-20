@@ -14,6 +14,8 @@ require (
 	github.com/guptarohit/asciigraph v0.5.1 // indirect
 	github.com/mattn/go-runewidth v0.0.7 // indirect
 	github.com/olekukonko/tablewriter v0.0.4 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/spatialcurrent/go-math v0.0.0-20211120210754-b3872f7000fe // indirect
 	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a // indirect
 )

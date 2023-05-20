@@ -1,6 +1,7 @@
 package autotrader
 
 import (
+	"errors"
 	"math"
 	"os/exec"
 	"runtime"
@@ -9,6 +10,8 @@ import (
 )
 
 const float64Tolerance = float64(1e-6)
+
+var ErrNotASignedNumber = errors.New("not a signed number")
 
 // Crossover returns true if the latest a value crosses above the latest b value, but only if it just happened. For example, if a series is [1, 2, 3, 4, 5] and b series is [1, 2, 3, 4, 3], then Crossover(a, b) returns false because the latest a value is 5 and the latest b value is 3. However, if a series is [1, 2, 3, 4, 5] and b series is [1, 2, 3, 4, 6], then Crossover(a, b) returns true because the latest a value is 5 and the latest b value is 6
 func Crossover(a, b Series) bool {
@@ -92,4 +95,154 @@ func Open(url string) error {
 	}
 	args = append(args, url)
 	return exec.Command(cmd, args...).Start()
+}
+
+// LessAny returns true if a < b. a and b must be signed numbers. If a or b is not a signed number, then the function returns false, and the value that was first identified as not a signed number as the interface{} alias 'any'. The order of checking is a -> b. If a is not a signed number, then a is returned as the offender. Else if b is not a signed number, then b is returned as the offender. Else, nil is returned as the offender.
+//
+// A signed number is any of the following types:
+//
+//   - float64
+//   - float32
+//   - int
+//   - int64
+//   - int32
+//   - int16
+//   - int8
+func LessAny(a, b any) (less bool, offender any) {
+	switch a := a.(type) {
+	case float64:
+		switch b := b.(type) {
+		case float64:
+			return a < b, nil
+		case float32:
+			return a < float64(b), nil
+		case int:
+			return a < float64(b), nil
+		case int64:
+			return a < float64(b), nil
+		case int32:
+			return a < float64(b), nil
+		case int16:
+			return a < float64(b), nil
+		case int8:
+			return a < float64(b), nil
+		default:
+			return false, b
+		}
+	case float32:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return a < b, nil
+		case int:
+			return float64(a) < float64(b), nil
+		case int64:
+			return float64(a) < float64(b), nil
+		case int32:
+			return a < float32(b), nil
+		case int16:
+			return a < float32(b), nil
+		case int8:
+			return a < float32(b), nil
+		default:
+			return false, b
+		}
+	case int:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return float64(a) < float64(b), nil
+		case int:
+			return a < b, nil
+		case int64:
+			return int64(a) < b, nil
+		case int32:
+			return a < int(b), nil
+		case int16:
+			return a < int(b), nil
+		case int8:
+			return a < int(b), nil
+		default:
+			return false, b
+		}
+	case int64:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return float64(a) < float64(b), nil
+		case int:
+			return a < int64(b), nil
+		case int64:
+			return a < b, nil
+		case int32:
+			return a < int64(b), nil
+		case int16:
+			return a < int64(b), nil
+		case int8:
+			return a < int64(b), nil
+		default:
+			return false, b
+		}
+	case int32:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return float32(a) < float32(b), nil
+		case int:
+			return int(a) < b, nil
+		case int64:
+			return int64(a) < b, nil
+		case int32:
+			return a < b, nil
+		case int16:
+			return a < int32(b), nil
+		case int8:
+			return a < int32(b), nil
+		default:
+			return false, b
+		}
+	case int16:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return float32(a) < b, nil
+		case int:
+			return int(a) < b, nil
+		case int64:
+			return int64(a) < b, nil
+		case int32:
+			return int32(a) < b, nil
+		case int16:
+			return a < b, nil
+		case int8:
+			return a < int16(b), nil
+		default:
+			return false, b
+		}
+	case int8:
+		switch b := b.(type) {
+		case float64:
+			return float64(a) < b, nil
+		case float32:
+			return float32(a) < b, nil
+		case int:
+			return int(a) < b, nil
+		case int64:
+			return int64(a) < b, nil
+		case int32:
+			return int32(a) < b, nil
+		case int16:
+			return int16(a) < b, nil
+		case int8:
+			return a < b, nil
+		default:
+			return false, b
+		}
+	}
+	return false, a
 }
