@@ -178,29 +178,29 @@ func (d *Frame) Dates() *Series {
 	return d.Series("Date")
 }
 
-// Opens returns a Series of all the open prices in the Frame. This is equivalent to calling Series("Open").
-func (d *Frame) Opens() *Series {
-	return d.Series("Open")
+// Opens returns a FloatSeries of all the open prices in the Frame. This is equivalent to calling Series("Open").
+func (d *Frame) Opens() *FloatSeries {
+	return &FloatSeries{d.Series("Open")}
 }
 
-// Highs returns a Series of all the high prices in the Frame. This is equivalent to calling Series("High").
-func (d *Frame) Highs() *Series {
-	return d.Series("High")
+// Highs returns a FloatSeries of all the high prices in the Frame. This is equivalent to calling Series("High").
+func (d *Frame) Highs() *FloatSeries {
+	return &FloatSeries{d.Series("High")}
 }
 
-// Lows returns a Series of all the low prices in the Frame. This is equivalent to calling Series("Low").
-func (d *Frame) Lows() *Series {
-	return d.Series("Low")
+// Lows returns a FloatSeries of all the low prices in the Frame. This is equivalent to calling Series("Low").
+func (d *Frame) Lows() *FloatSeries {
+	return &FloatSeries{d.Series("Low")}
 }
 
-// Closes returns a Series of all the close prices in the Frame. This is equivalent to calling Series("Close").
-func (d *Frame) Closes() *Series {
-	return d.Series("Close")
+// Closes returns a FloatSeries of all the close prices in the Frame. This is equivalent to calling Series("Close").
+func (d *Frame) Closes() *FloatSeries {
+	return &FloatSeries{d.Series("Close")}
 }
 
 // Volumes returns a Series of all the volumes in the Frame. This is equivalent to calling Series("Volume").
-func (d *Frame) Volumes() *Series {
-	return d.Series("Volume")
+func (d *Frame) Volumes() *FloatSeries {
+	return &FloatSeries{d.Series("Volume")}
 }
 
 // Contains returns true if the Frame contains all the given series names. Remember that names are case sensitive.

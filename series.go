@@ -33,6 +33,10 @@ func NewSeries(name string, vals ...any) *Series {
 	}
 }
 
+func (s *Series) ISetName(name string) {
+	s.SetName(name)
+}
+
 // Copy is equivalent to CopyRange(0, -1).
 func (s *Series) Copy() *Series {
 	return s.CopyRange(0, -1)
