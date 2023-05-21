@@ -3,10 +3,11 @@ package autotrader
 import (
 	"math"
 	"testing"
+	"time"
 )
 
-func TestDataSeries(t *testing.T) {
-	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
+func TestSeries(t *testing.T) {
+	series := NewFloatSeries("test", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 	if series.Len() != 10 {
 		t.Fatalf("Expected 10 rows, got %d", series.Len())
 	}
@@ -15,7 +16,7 @@ func TestDataSeries(t *testing.T) {
 		t.Fatalf("Expected 10 rows, got %d", series.Len())
 	}
 	for i := 0; i < 10; i++ {
-		if val := series.Float(i); val != float64(10-i) {
+		if val := series.Value(i); val != float64(10-i) {
 			t.Errorf("(%d)\tExpected %f, got %v", i, float64(10-i), val)
 		}
 	}
@@ -25,12 +26,12 @@ func TestDataSeries(t *testing.T) {
 		t.Fatalf("Expected 5 rows, got %d", last5.Len())
 	}
 	for i := 0; i < 5; i++ {
-		if val := last5.Float(i); val != float64(5-i) {
+		if val := last5.Value(i); val != float64(5-i) {
 			t.Errorf("(%d)\tExpected %f, got %v", i, float64(5-i), val)
 		}
 	}
 	last5.SetValue(-1, 0.0)
-	if series.Float(-1) == 0.0 {
+	if series.Value(-1) == 0.0 {
 		t.Errorf("Expected data to be copied, not referenced")
 	}
 
@@ -67,7 +68,7 @@ func TestDataSeries(t *testing.T) {
 	}
 }
 
-func TestDataSeriesFunctional(t *testing.T) {
+func TestSeriesFunctional(t *testing.T) {
 	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 	doubled := series.Copy().Map(func(_ int, val any) any {
 		return val.(float64) * 2
@@ -120,7 +121,7 @@ func TestDataSeriesFunctional(t *testing.T) {
 	}
 }
 
-func TestRollingAppliedSeries(t *testing.T) {
+func TestRollingSeries(t *testing.T) {
 	// Test rolling average.
 	series := NewSeries("test", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0)
 
@@ -150,7 +151,70 @@ func TestRollingAppliedSeries(t *testing.T) {
 	}
 }
 
-func TestDataSeriesEURUSD(t *testing.T) {
+func TestIndexedSeries(t *testing.T) {
+	intIndexed, err := NewIndexedSeries("test", map[int]any{
+		0:  1.0,
+		2:  2.0,
+		4:  3.0,
+		6:  4.0,
+		8:  5.0,
+		10: 6.0,
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %s", err)
+	}
+	if intIndexed.Len() != 6 {
+		t.Fatalf("Expected 6 rows, got %d", intIndexed.Len())
+	}
+	if intIndexed.ValueIndex(4).(float64) != 3.0 {
+		t.Errorf("Expected value at index 4 to be 3.0, got %v", intIndexed.ValueIndex(4))
+	}
+
+	floatIndexed, err := NewIndexedSeries[float64]("test", nil)
+	if err != nil {
+		t.Fatalf("Expected no error, got %s", err)
+	}
+	floatIndexed.Push(0.0, 1.0)
+	floatIndexed.Push(2.0, 2.0)
+	floatIndexed.Push(4.0, 3.0)
+	if floatIndexed.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", floatIndexed.Len())
+	}
+	if floatIndexed.ValueIndex(4.0).(float64) != 3.0 {
+		t.Errorf("Expected value at index 4.0 to be 3.0, got %v", floatIndexed.ValueIndex(4.0))
+	}
+
+	timeIndexed, err := NewIndexedSeries("test", map[time.Time]any{
+		time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC): 1.0,
+		time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC): 2.0,
+		time.Date(2018, 1, 3, 0, 0, 0, 0, time.UTC): 3.0,
+	})
+	if err != nil {
+		t.Fatalf("Expected no error, got %s", err)
+	}
+	if timeIndexed.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", timeIndexed.Len())
+	}
+	if timeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)).(float64) != 2.0 {
+		t.Errorf("Expected value at index 2018-01-02 to be 2.0, got %v", timeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)))
+	}
+
+	doubledTimeIndexed := timeIndexed.Copy().Add(timeIndexed)
+	if doubledTimeIndexed.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", doubledTimeIndexed.Len())
+	}
+	if doubledTimeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)).(float64) != 4.0 {
+		t.Errorf("Expected value at index 2018-01-02 to be 4.0, got %v", doubledTimeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)))
+	}
+
+	// Test that the Copy function works.
+	doubledTimeIndexed.SetValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC), 100.0)
+	if timeIndexed.ValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)).(float64) != 1.0 {
+		t.Errorf("Expected value at index 2018-01-01 to be 1.0, got %v", timeIndexed.ValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)))
+	}
+}
+
+func TestSeriesEURUSD(t *testing.T) {
 	data, err := EURUSD()
 	if err != nil {
 		t.Fatalf("Expected no error, got %s", err)

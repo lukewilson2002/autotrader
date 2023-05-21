@@ -100,6 +100,13 @@ func (s *FloatSeries) Push(val float64) *FloatSeries {
 	return s
 }
 
+func (s *FloatSeries) Pop() float64 {
+	if v := s.Series.Pop(); v != nil {
+		return v.(float64)
+	}
+	return 0
+}
+
 // Remove deletes the value at the given index and returns it. If the index is out of bounds, it returns 0.
 func (s *FloatSeries) Remove(i int) float64 {
 	if v := s.Series.Remove(i); v != nil {
