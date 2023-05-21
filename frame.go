@@ -3,7 +3,6 @@ package autotrader
 import (
 	"bytes"
 	"fmt"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -12,8 +11,7 @@ import (
 )
 
 type Frame struct {
-	series    map[string]*Series
-	rowCounts map[string]int
+	series map[string]*Series
 }
 
 func NewFrame(series ...*Series) *Frame {
@@ -61,9 +59,9 @@ func (d *Frame) Len() int {
 		return 0
 	}
 	var length int
-	for _, v := range d.rowCounts {
-		if v > length {
-			length = v
+	for _, s := range d.series {
+		if s.Len() > length {
+			length = s.Len()
 		}
 	}
 	return length
@@ -103,7 +101,7 @@ func (d *Frame) String() string {
 	buffer := new(bytes.Buffer)
 	t := tabwriter.NewWriter(buffer, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(t, "%T[%dx%d]\n", d, d.Len(), len(d.series))
-	fmt.Fprintln(t, "\t", strings.Join(names, "\t"), "\t")
+	fmt.Fprintf(t, "\t%s\t\n", strings.Join(names, "\t"))
 
 	printRow := func(i int) {
 		row := make([]string, len(series))
@@ -117,7 +115,7 @@ func (d *Frame) String() string {
 				row[j] = fmt.Sprintf("%v", typ)
 			}
 		}
-		fmt.Fprintln(t, strconv.Itoa(i), "\t", strings.Join(row, "\t"), "\t")
+		fmt.Fprintf(t, "%d\t%s\t\n", i, strings.Join(row, "\t"))
 	}
 
 	// Print the first ten rows and the last ten rows if the Frame has more than 20 rows.
@@ -250,7 +248,6 @@ func (d *Frame) PushValues(values map[string]any) error {
 func (d *Frame) PushSeries(series ...*Series) error {
 	if d.series == nil {
 		d.series = make(map[string]*Series, len(series))
-		d.rowCounts = make(map[string]int, len(series))
 	}
 
 	for _, s := range series {
@@ -258,10 +255,8 @@ func (d *Frame) PushSeries(series ...*Series) error {
 		if _, ok := d.series[name]; ok {
 			return fmt.Errorf("Frame already contains column %q", name)
 		}
-		s.SignalConnect("LengthChanged", d, d.onSeriesLengthChanged, name)
 		s.SignalConnect("NameChanged", d, d.onSeriesNameChanged, name)
 		d.series[name] = s
-		d.rowCounts[name] = s.Len()
 	}
 
 	return nil
@@ -274,20 +269,9 @@ func (d *Frame) RemoveSeries(names ...string) {
 		if !ok {
 			return
 		}
-		s.SignalDisconnect("LengthChanged", d, d.onSeriesLengthChanged)
 		s.SignalDisconnect("NameChanged", d, d.onSeriesNameChanged)
 		delete(d.series, name)
-		delete(d.rowCounts, name)
 	}
-}
-
-func (d *Frame) onSeriesLengthChanged(args ...any) {
-	if len(args) != 2 {
-		panic(fmt.Sprintf("expected two arguments, got %d", len(args)))
-	}
-	newLen := args[0].(int)
-	name := args[1].(string)
-	d.rowCounts[name] = newLen
 }
 
 func (d *Frame) onSeriesNameChanged(args ...any) {
@@ -298,14 +282,10 @@ func (d *Frame) onSeriesNameChanged(args ...any) {
 	oldName := args[1].(string)
 
 	d.series[newName] = d.series[oldName]
-	d.rowCounts[newName] = d.rowCounts[oldName]
 	delete(d.series, oldName)
-	delete(d.rowCounts, oldName)
 
 	// Reconnect our signal handlers to update the name we use in the handlers.
-	d.series[newName].SignalDisconnect("LengthChanged", d, d.onSeriesLengthChanged)
 	d.series[newName].SignalDisconnect("NameChanged", d, d.onSeriesNameChanged)
-	d.series[newName].SignalConnect("LengthChanged", d, d.onSeriesLengthChanged, newName)
 	d.series[newName].SignalConnect("NameChanged", d, d.onSeriesNameChanged, newName)
 }
 

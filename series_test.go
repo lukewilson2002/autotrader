@@ -152,7 +152,7 @@ func TestRollingSeries(t *testing.T) {
 }
 
 func TestIndexedSeries(t *testing.T) {
-	intIndexed, err := NewIndexedSeries("test", map[int]any{
+	intIndexed := NewIndexedSeries("test", map[int]any{
 		0:  1.0,
 		2:  2.0,
 		4:  3.0,
@@ -160,9 +160,6 @@ func TestIndexedSeries(t *testing.T) {
 		8:  5.0,
 		10: 6.0,
 	})
-	if err != nil {
-		t.Fatalf("Expected no error, got %s", err)
-	}
 	if intIndexed.Len() != 6 {
 		t.Fatalf("Expected 6 rows, got %d", intIndexed.Len())
 	}
@@ -170,10 +167,7 @@ func TestIndexedSeries(t *testing.T) {
 		t.Errorf("Expected value at index 4 to be 3.0, got %v", intIndexed.ValueIndex(4))
 	}
 
-	floatIndexed, err := NewIndexedSeries[float64]("test", nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got %s", err)
-	}
+	floatIndexed := NewIndexedSeries[float64]("test", nil)
 	floatIndexed.Push(0.0, 1.0)
 	floatIndexed.Push(2.0, 2.0)
 	floatIndexed.Push(4.0, 3.0)
@@ -184,33 +178,31 @@ func TestIndexedSeries(t *testing.T) {
 		t.Errorf("Expected value at index 4.0 to be 3.0, got %v", floatIndexed.ValueIndex(4.0))
 	}
 
-	timeIndexed, err := NewIndexedSeries("test", map[time.Time]any{
-		time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC): 1.0,
-		time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC): 2.0,
-		time.Date(2018, 1, 3, 0, 0, 0, 0, time.UTC): 3.0,
+	timeIndexed := NewIndexedSeries("test", map[int64]any{
+		time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix(): 1.0,
+		time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(): 2.0,
+		time.Date(2018, 1, 3, 0, 0, 0, 0, time.UTC).Unix(): 3.0,
 	})
-	if err != nil {
-		t.Fatalf("Expected no error, got %s", err)
-	}
 	if timeIndexed.Len() != 3 {
 		t.Fatalf("Expected 3 rows, got %d", timeIndexed.Len())
 	}
-	if timeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)).(float64) != 2.0 {
-		t.Errorf("Expected value at index 2018-01-02 to be 2.0, got %v", timeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)))
+	if index := time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(); timeIndexed.ValueIndex(index).(float64) != 2.0 {
+		t.Errorf("Expected value at index 2018-01-02 to be 2.0, got %v", timeIndexed.ValueIndex(index))
 	}
 
 	doubledTimeIndexed := timeIndexed.Copy().Add(timeIndexed)
 	if doubledTimeIndexed.Len() != 3 {
 		t.Fatalf("Expected 3 rows, got %d", doubledTimeIndexed.Len())
 	}
-	if doubledTimeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)).(float64) != 4.0 {
-		t.Errorf("Expected value at index 2018-01-02 to be 4.0, got %v", doubledTimeIndexed.ValueIndex(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC)))
+	if index := time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(); doubledTimeIndexed.ValueIndex(index).(float64) != 4.0 {
+		t.Errorf("Expected value at index 2018-01-02 to be 4.0, got %v", doubledTimeIndexed.ValueIndex(index))
 	}
 
 	// Test that the Copy function works.
-	doubledTimeIndexed.SetValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC), 100.0)
-	if timeIndexed.ValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)).(float64) != 1.0 {
-		t.Errorf("Expected value at index 2018-01-01 to be 1.0, got %v", timeIndexed.ValueIndex(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC)))
+	index := time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+	doubledTimeIndexed.SetValueIndex(index, 100.0)
+	if timeIndexed.ValueIndex(index).(float64) != 1.0 {
+		t.Errorf("Expected value at index 2018-01-01 to be 1.0, got %v", timeIndexed.ValueIndex(index))
 	}
 }
 

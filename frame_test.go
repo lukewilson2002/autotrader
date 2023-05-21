@@ -68,6 +68,44 @@ func TestDataFrameSeriesManagement(t *testing.T) {
 	}
 }
 
+func TestIndexedFrame(t *testing.T) {
+	data := NewDOHLCVIndexedFrame[UnixTime]()
+	data.PushCandle(UnixTime(time.Date(2021, 5, 13, 0, 0, 0, 0, time.UTC).Unix()), 0.8, 1.2, 0.6, 1.0, 1)
+	data.PushCandle(UnixTime(time.Date(2021, 5, 14, 0, 0, 0, 0, time.UTC).Unix()), 1.0, 1.4, 0.8, 1.2, 1)
+	data.PushCandle(UnixTime(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC).Unix()), 1.2, 1.6, 1.0, 1.4, 1)
+	if data.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", data.Len())
+	}
+	if data.Close(-1) != 1.4 {
+		t.Fatalf("Expected latest close to be 1.4, got %f", data.Close(-1))
+	}
+	if !data.Date(0).Time().Equal(time.Date(2021, 5, 13, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected first date to be 2021-05-13, got %v", data.Date(0))
+	}
+	if !data.Date(-1).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected latest date to be 2021-05-15, got %v", data.Date(-1))
+	}
+
+	data.ForEachSeries(func(series *IndexedSeries[UnixTime]) {
+		if series.Len() != 3 {
+			t.Fatalf("Expected 3 rows, got %d", series.Len())
+		}
+		series.Reverse()
+	})
+
+	if data.Close(-1) != 1.0 {
+		t.Fatalf("Expected latest close to be 1.0, got %f", data.Close(-1))
+	}
+	if !data.Date(0).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected first date to be 2021-05-15, got %v", data.Date(0))
+	}
+	if index := UnixTime(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC).Unix()); data.CloseIndex(index) != 1.4 {
+		t.Fatalf("Expected close at 2021-05-15 to be 1.4, got %f", data.CloseIndex(index))
+	}
+
+	t.Log(data.String())
+}
+
 func TestDOHLCVDataFrame(t *testing.T) {
 	data := NewDOHLCVFrame()
 	if !data.ContainsDOHLCV() {

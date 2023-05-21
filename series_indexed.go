@@ -21,7 +21,7 @@ type IndexedSeries[I comparable] struct {
 	index  map[I]int
 }
 
-func NewIndexedSeries[I comparable](name string, vals map[I]any) (*IndexedSeries[I], error) {
+func NewIndexedSeries[I comparable](name string, vals map[I]any) *IndexedSeries[I] {
 	out := &IndexedSeries[I]{
 		&SignalManager{},
 		NewSeries(name),
@@ -30,12 +30,12 @@ func NewIndexedSeries[I comparable](name string, vals map[I]any) (*IndexedSeries
 	for key, val := range vals {
 		// Check that the key is not already in the map.
 		if _, ok := out.index[key]; ok {
-			return nil, ErrIndexExists{key}
+			panic(ErrIndexExists{key})
 		}
 		out.index[key] = out.series.Len()
 		out.series.Push(val)
 	}
-	return out, nil
+	return out
 }
 
 // Add adds the values of the other series to the values of this series. The other series must have the same index type. The values are added by comparing their indexes. For example, adding two IndexedSeries that share no indexes will result in no change of values.
@@ -148,14 +148,19 @@ func (s *IndexedSeries[I]) Mul(other *IndexedSeries[I]) *IndexedSeries[I] {
 	return s
 }
 
+// Name returns the name of the series.
+func (s *IndexedSeries[I]) Name() string {
+	return s.series.Name()
+}
+
 // Push adds a value to the end of the series and returns the series or an error if the index already exists. The error is of type ErrIndexExists.
 func (s *IndexedSeries[I]) Push(index I, val any) (*IndexedSeries[I], error) {
 	// Check that the key is not already in the map.
 	if _, ok := s.index[index]; ok {
 		return nil, ErrIndexExists{index}
 	}
+	s.index[index] = s.series.Len()
 	s.series.Push(val)
-	s.index[index] = s.series.Len() - 1
 	return s, nil
 }
 
