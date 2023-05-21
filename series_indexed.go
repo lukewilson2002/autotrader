@@ -259,6 +259,24 @@ func (s *IndexedSeries[I]) SetValueIndex(index I, val any) *IndexedSeries[I] {
 	return s.SetValue(row, val)
 }
 
+func (s *IndexedSeries[I]) Shift(periods int, nilValue any) *IndexedSeries[I] {
+	_ = s.series.Shift(periods, nilValue)
+	return s
+}
+
+func (s *IndexedSeries[I]) ShiftIndex(periods int, step func(prev I, amt int) I) *IndexedSeries[I] {
+	if periods == 0 {
+		return s
+	}
+	// Shift the indexes.
+	newIndexes := make(map[I]int, len(s.index))
+	for index, i := range s.index {
+		newIndexes[step(index, periods)] = i
+	}
+	s.index = newIndexes
+	return s
+}
+
 // Sub subtracts the other series values from this series values. The other series must have the same index type. The values are subtracted by comparing their indexes. For example, subtracting two IndexedSeries that share no indexes will result in no change of values.
 func (s *IndexedSeries[I]) Sub(other *IndexedSeries[I]) *IndexedSeries[I] {
 	for index, row := range s.index {

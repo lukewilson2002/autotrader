@@ -106,6 +106,58 @@ func TestIndexedFrame(t *testing.T) {
 	t.Log(data.String())
 }
 
+func TestIndexedFrameFunctions(t *testing.T) {
+	data := NewDOHLCVIndexedFrame[UnixTime]()
+	data.PushCandle(UnixTime(time.Date(2021, 5, 13, 0, 0, 0, 0, time.UTC).Unix()), 0.8, 1.2, 0.6, 1.0, 1)
+	data.PushCandle(UnixTime(time.Date(2021, 5, 14, 0, 0, 0, 0, time.UTC).Unix()), 1.0, 1.4, 0.8, 1.2, 1)
+	data.PushCandle(UnixTime(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC).Unix()), 1.2, 1.6, 1.0, 1.4, 1)
+
+	data.ShiftIndex(2, UnixTimeStep(time.Hour*24)) // Shift 2 days
+
+	if data.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", data.Len())
+	}
+	if data.Close(-1) != 1.4 {
+		t.Fatalf("Expected latest close to be 1.4, got %f", data.Close(-1))
+	}
+	if !data.Date(0).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected first date to be 2021-05-15, got %v", data.Date(0))
+	}
+	if !data.Date(-1).Time().Equal(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected latest date to be 2021-05-17, got %v", data.Date(-1))
+	}
+
+	data.Shift(-2, 0.0) // Shift all rows up by 2 and clear the last 2 rows with zero.
+
+	if data.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", data.Len())
+	}
+	if data.Close(0) != 1.4 {
+		t.Fatalf("Expected latest close to be 1.4, got %f", data.Close(0))
+	}
+	if data.Close(-1) != 0.0 {
+		t.Fatalf("Expected latest close to be 0.0, got %f", data.Close(-1))
+	}
+	if !data.Date(0).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected first date to be 2021-05-15, got %v", data.Date(0))
+	}
+
+	data.Shift(1, 0.0) // Shift all rows down by 1 and clear the first row with zero.
+
+	if data.Len() != 3 {
+		t.Fatalf("Expected 3 rows, got %d", data.Len())
+	}
+	if data.Close(0) != 0.0 {
+		t.Fatalf("Expected latest close to be 0.0, got %f", data.Close(0))
+	}
+	if data.Close(1) != 1.4 {
+		t.Fatalf("Expected latest close to be 1.4, got %f", data.Close(1))
+	}
+	if !data.Date(0).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("Expected first date to be 2021-05-15, got %v", data.Date(0))
+	}
+}
+
 func TestDOHLCVDataFrame(t *testing.T) {
 	data := NewDOHLCVFrame()
 	if !data.ContainsDOHLCV() {

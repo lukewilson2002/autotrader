@@ -400,6 +400,32 @@ func (s *Series) Rolling(period int) *RollingSeries {
 	return NewRollingSeries(s, period)
 }
 
+func (s *Series) Shift(periods int, nilVal any) *Series {
+	if periods == 0 {
+		return s
+	} else if periods > 0 {
+		// Shift values forward.
+		for i := s.Len() - 1; i >= periods; i-- {
+			s.data[i] = s.data[i-periods]
+		}
+		// Fill in nil values.
+		for i := 0; i < periods; i++ {
+			s.data[i] = nilVal
+		}
+	} else {
+		periods = -periods
+		// Shift values backward.
+		for i := 0; i < periods; i++ {
+			s.data[i] = s.data[periods-i]
+		}
+		// Fill in nil values.
+		for i := periods; i < s.Len(); i++ {
+			s.data[i] = nilVal
+		}
+	}
+	return s
+}
+
 type RollingSeries struct {
 	series *Series
 	period int
