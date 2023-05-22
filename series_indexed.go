@@ -89,6 +89,18 @@ func (s *IndexedSeries[I]) Filter(f func(i int, val any) bool) *IndexedSeries[I]
 	return s
 }
 
+func (s *IndexedSeries[I]) Float(i int) float64 {
+	return s.series.Float(i)
+}
+
+func (s *IndexedSeries[I]) FloatIndex(index I) float64 {
+	row := s.Row(index)
+	if row < 0 {
+		return 0.0
+	}
+	return s.series.Float(row)
+}
+
 func (s *IndexedSeries[I]) ForEach(f func(i int, val any)) *IndexedSeries[I] {
 	_ = s.series.ForEach(f)
 	return s
@@ -240,6 +252,10 @@ func (s *IndexedSeries[I]) ReverseIndexes() *IndexedSeries[I] {
 	return s
 }
 
+func (s *IndexedSeries[I]) Rolling(period int) *IndexedRollingSeries[I] {
+	return NewIndexedRollingSeries(s, period)
+}
+
 func (s *IndexedSeries[I]) SetName(name string) *IndexedSeries[I] {
 	_ = s.series.SetName(name)
 	return s
@@ -313,4 +329,52 @@ func (s *IndexedSeries[I]) Values() []any {
 // ValueRange returns a copy of the values in the given range. start is an EasyIndex. count is the number of values to return. If count is -1, all values after start are returned. See Series.ValueRange() for more information.
 func (s *IndexedSeries[I]) ValueRange(start, count int) []any {
 	return s.series.ValueRange(start, count)
+}
+
+type IndexedRollingSeries[I comparable] struct {
+	rolling *RollingSeries
+	series  *IndexedSeries[I]
+}
+
+func NewIndexedRollingSeries[I comparable](series *IndexedSeries[I], period int) *IndexedRollingSeries[I] {
+	return &IndexedRollingSeries[I]{NewRollingSeries(series.series, period), series}
+}
+
+func (s *IndexedRollingSeries[I]) Period(row int) []any {
+	return s.rolling.Period(row)
+}
+
+func (s *IndexedRollingSeries[I]) Max() *IndexedSeries[I] {
+	_ = s.rolling.Max() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) Min() *IndexedSeries[I] {
+	_ = s.rolling.Min() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) Average() *IndexedSeries[I] {
+	_ = s.rolling.Average() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) Mean() *IndexedSeries[I] {
+	_ = s.rolling.Mean() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) Median() *IndexedSeries[I] {
+	_ = s.rolling.Median() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) EMA() *IndexedSeries[I] {
+	_ = s.rolling.EMA() // Mutate the underlying series.
+	return s.series
+}
+
+func (s *IndexedRollingSeries[I]) StdDev() *IndexedSeries[I] {
+	_ = s.rolling.StdDev() // Mutate the underlying series.
+	return s.series
 }

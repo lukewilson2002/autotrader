@@ -435,14 +435,14 @@ func NewRollingSeries(series *Series, period int) *RollingSeries {
 	return &RollingSeries{series, period}
 }
 
-// Period returns a slice of 'any' values with a length up to the period of the RollingSeries. The last item in the slice is the item at i. If i is out of bounds, nil is returned.
-func (s *RollingSeries) Period(i int) []any {
+// Period returns a slice of 'any' values with a length up to the period of the RollingSeries. The last item in the slice is the item at row. If row is out of bounds, nil is returned.
+func (s *RollingSeries) Period(row int) []any {
 	items := make([]any, 0, s.period)
-	i = EasyIndex(i, s.series.Len())
-	if i < 0 || i >= s.series.Len() {
+	row = EasyIndex(row, s.series.Len())
+	if row < 0 || row >= s.series.Len() {
 		return items
 	}
-	for j := i; j > i-s.period && j >= 0; j-- {
+	for j := row; j > row-s.period && j >= 0; j-- {
 		items = slices.Insert(items, 0, s.series.Value(j))
 	}
 	return items

@@ -1,6 +1,9 @@
 package autotrader
 
-import "math"
+import (
+	"math"
+	"time"
+)
 
 // RSI calculates the Relative Strength Index for a given Series. Typically, the input series is the Close column of a DataFrame. Returns a Series of RSI values of the same length as the input.
 //
@@ -22,6 +25,7 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 	avgLoss := &FloatSeries{delta.Copy().
 		Map(func(i int, val float64) float64 { return math.Abs(math.Min(val, 0)) }).
 		Rolling(periods).Average()}
+
 	// Calculate the RSI.
 	return avgGain.Map(func(i int, val float64) float64 {
 		loss := avgLoss.Float(i)
@@ -29,7 +33,7 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 			return float64(100)
 		}
 		return float64(100 - 100/(1+val/loss))
-	})
+	}).SetName("RSI")
 }
 
 // Ichimoku calculates the Ichimoku Cloud for a given Series. Returns a DataFrame of the same length as the input with float64 values. The series input must contain only float64 values, which are traditionally the close prices.
@@ -45,29 +49,40 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 //   - LeadingA
 //   - LeadingB
 //   - Lagging
-func Ichimoku(series *FloatSeries, convPeriod, basePeriod, leadingPeriods int) *Frame {
+func Ichimoku(series *IndexedSeries[UnixTime], convPeriod, basePeriod, leadingPeriods int) *IndexedFrame[UnixTime] {
+	// TODO: make this run concurrently.
+
 	// Calculate the Conversion Line.
 	conv := series.Copy().Rolling(convPeriod).Max().Add(series.Copy().Rolling(convPeriod).Min()).
-		Map(func(i int, val any) any {
+		Map(func(_ UnixTime, _ int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Base Line.
 	base := series.Copy().Rolling(basePeriod).Max().Add(series.Copy().Rolling(basePeriod).Min()).
-		Map(func(i int, val any) any {
+		Map(func(_ UnixTime, _ int, val any) any {
 			return val.(float64) / float64(2)
 		})
+
 	// Calculate the Leading Span A.
 	leadingA := conv.Copy().Rolling(leadingPeriods).Max().Add(base.Copy().Rolling(leadingPeriods).Max()).
-		Map(func(i int, val any) any {
+		Map(func(_ UnixTime, _ int, val any) any {
 			return val.(float64) / float64(2)
 		})
 	// Calculate the Leading Span B.
 	leadingB := series.Copy().Rolling(leadingPeriods).Max().Add(series.Copy().Rolling(leadingPeriods).Min()).
-		Map(func(i int, val any) any {
+		Map(func(_ UnixTime, _ int, val any) any {
 			return val.(float64) / float64(2)
 		})
+
 	// Calculate the Lagging Span.
-	// lagging := series.Shift(-leadingPeriods)
+	lagging := series.Copy().ShiftIndex(-leadingPeriods, UnixTimeStep(time.Hour))
+
 	// Return a DataFrame of the results.
-	return NewFrame(conv, base, leadingA, leadingB)
+	return NewIndexedFrame(
+		conv.SetName("Conversion"),
+		base.SetName("Base"),
+		leadingA.SetName("LeadingA"),
+		leadingB.SetName("LeadingB"),
+		lagging.SetName("Lagging"),
+	)
 }
