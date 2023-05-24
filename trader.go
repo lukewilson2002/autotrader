@@ -161,21 +161,21 @@ func (t *Trader) fetchData() {
 	}
 }
 
-func (t *Trader) Buy(units float64) {
-	t.closeOrdersAndPositions()
+func (t *Trader) Buy(units, stopLoss, takeProfit float64) {
+	t.CloseOrdersAndPositions()
 	t.Log.Printf("Buy %v units", units)
-	t.Broker.Order(Market, t.Symbol, units, 0, 0, 0)
+	t.Broker.Order(Market, t.Symbol, units, 0, stopLoss, takeProfit)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{units, false})
 }
 
-func (t *Trader) Sell(units float64) {
-	t.closeOrdersAndPositions()
+func (t *Trader) Sell(units, stopLoss, takeProfit float64) {
+	t.CloseOrdersAndPositions()
 	t.Log.Printf("Sell %v units", units)
-	t.Broker.Order(Market, t.Symbol, -units, 0, 0, 0)
+	t.Broker.Order(Market, t.Symbol, -units, 0, stopLoss, takeProfit)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{-units, false})
 }
 
-func (t *Trader) closeOrdersAndPositions() {
+func (t *Trader) CloseOrdersAndPositions() {
 	for _, order := range t.Broker.OpenOrders() {
 		if order.Symbol() == t.Symbol {
 			t.Log.Printf("Cancelling order: %v units", order.Units())
@@ -189,6 +189,26 @@ func (t *Trader) closeOrdersAndPositions() {
 			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{position.Units(), true})
 		}
 	}
+}
+
+func (t *Trader) IsLong() bool {
+	positions := t.Broker.OpenPositions()
+	if len(positions) <= 0 {
+		return false
+	} else if len(positions) > 1 {
+		panic("cannot call IsLong with hedging enabled")
+	}
+	return positions[0].Units() > 0
+}
+
+func (t *Trader) IsShort() bool {
+	positions := t.Broker.OpenPositions()
+	if len(positions) <= 0 {
+		return false
+	} else if len(positions) > 1 {
+		panic("cannot call IsShort with hedging enabled")
+	}
+	return positions[0].Units() < 0
 }
 
 type TraderConfig struct {

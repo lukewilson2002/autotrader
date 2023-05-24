@@ -140,13 +140,36 @@ func TestRollingSeries(t *testing.T) {
 	}
 
 	ema5Expected := []float64{1, 1.3333333333333333, 1.8888888888888888, 2.5925925925925926, 3.3950617283950617, 4.395061728395062, 5.395061728395062, 6.395061728395062, 7.395061728395062, 8.395061728395062}
-	ema5 := series.Rolling(5).EMA() // Take the 5 period exponential moving average.
+	ema5 := series.Copy().Rolling(5).EMA() // Take the 5 period exponential moving average.
 	if ema5.Len() != 10 {
 		t.Fatalf("Expected 10 rows, got %d", ema5.Len())
 	}
 	for i := 0; i < 10; i++ {
 		if val := ema5.Float(i); !EqualApprox(val, ema5Expected[i]) {
 			t.Errorf("(%d)\tExpected %f, got %v", i, ema5Expected[i], val)
+		}
+	}
+
+	// Test min and max functions
+	minExpected := []float64{1, 1, 1, 1, 1, 2, 3, 4, 5, 6}
+	min := series.Copy().Rolling(5).Min()
+	if min.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", min.Len())
+	}
+	for i := 0; i < 10; i++ {
+		if val := min.Float(i); val != minExpected[i] {
+			t.Errorf("(%d)\tExpected %f, got %v", i, minExpected[i], val)
+		}
+	}
+
+	maxExpected := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	max := series.Copy().Rolling(5).Max()
+	if max.Len() != 10 {
+		t.Fatalf("Expected 10 rows, got %d", max.Len())
+	}
+	for i := 0; i < 10; i++ {
+		if val := max.Float(i); val != maxExpected[i] {
+			t.Errorf("(%d)\tExpected %f, got %v", i, maxExpected[i], val)
 		}
 	}
 }
@@ -237,5 +260,33 @@ func TestIndexedSeries(t *testing.T) {
 	doubledTimeIndexed.SetValueIndex(index, 100.0)
 	if timeIndexed.ValueIndex(index).(float64) != 1.0 {
 		t.Errorf("Expected value at index 2018-01-01 to be 1.0, got %v", timeIndexed.ValueIndex(index))
+	}
+}
+
+func TestIndexedOperations(t *testing.T) {
+	indexed := NewIndexedSeries("test", map[UnixTime]float64{
+		UnixTime(0): 1.0,
+		UnixTime(1): 2.0,
+		UnixTime(2): 3.0,
+		UnixTime(3): 4.0,
+		UnixTime(4): 5.0,
+	})
+
+	added := indexed.Copy().Add(indexed)
+	expected := []float64{2.0, 4.0, 6.0, 8.0, 10.0}
+	if added.Len() != 5 {
+		t.Fatalf("Expected 5 rows, got %d", added.Len())
+	}
+	for i := 0; i < 5; i++ {
+		if val := added.Float(i); val != expected[i] {
+			t.Errorf("(%d)\tExpected %f, got %v", i, expected[i], val)
+		}
+	}
+
+	added.DivFloat(2.0)
+	for i := 0; i < 5; i++ {
+		if val := added.Float(i); !EqualApprox(val, indexed.Float(i)) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, indexed.Float(i), val)
+		}
 	}
 }

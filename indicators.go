@@ -49,40 +49,21 @@ func RSI(series *FloatSeries, periods int) *FloatSeries {
 //   - LeadingA
 //   - LeadingB
 //   - Lagging
-func Ichimoku(series *IndexedSeries[UnixTime], convPeriod, basePeriod, leadingPeriods int) *IndexedFrame[UnixTime] {
+func Ichimoku(price *IndexedFrame[UnixTime], convPeriod, basePeriod, leadingPeriods int, frequency time.Duration) *IndexedFrame[UnixTime] {
 	// TODO: make this run concurrently.
 
-	// Calculate the Conversion Line.
-	conv := series.Copy().Rolling(convPeriod).Max().Add(series.Copy().Rolling(convPeriod).Min()).
-		Map(func(_ UnixTime, _ int, val any) any {
-			return val.(float64) / float64(2)
-		})
-	// Calculate the Base Line.
-	base := series.Copy().Rolling(basePeriod).Max().Add(series.Copy().Rolling(basePeriod).Min()).
-		Map(func(_ UnixTime, _ int, val any) any {
-			return val.(float64) / float64(2)
-		})
-
-	// Calculate the Leading Span A.
-	leadingA := conv.Copy().Rolling(leadingPeriods).Max().Add(base.Copy().Rolling(leadingPeriods).Max()).
-		Map(func(_ UnixTime, _ int, val any) any {
-			return val.(float64) / float64(2)
-		})
-	// Calculate the Leading Span B.
-	leadingB := series.Copy().Rolling(leadingPeriods).Max().Add(series.Copy().Rolling(leadingPeriods).Min()).
-		Map(func(_ UnixTime, _ int, val any) any {
-			return val.(float64) / float64(2)
-		})
-
-	// Calculate the Lagging Span.
-	lagging := series.Copy().ShiftIndex(-leadingPeriods, UnixTimeStep(time.Hour))
+	conv := price.Highs().Copy().Rolling(convPeriod).Max().Add(price.Lows().Copy().Rolling(convPeriod).Min()).DivFloat(2)
+	base := price.Highs().Copy().Rolling(basePeriod).Max().Add(price.Lows().Copy().Rolling(basePeriod).Min()).DivFloat(2)
+	lagging := price.Closes().Copy()
+	leadingA := conv.Copy().Add(base).DivFloat(2)
+	leadingB := price.Highs().Copy().Rolling(leadingPeriods).Max().Add(price.Lows().Copy().Rolling(leadingPeriods).Min()).DivFloat(2)
 
 	// Return a DataFrame of the results.
 	return NewIndexedFrame(
 		conv.SetName("Conversion"),
 		base.SetName("Base"),
-		leadingA.SetName("LeadingA"),
-		leadingB.SetName("LeadingB"),
-		lagging.SetName("Lagging"),
+		leadingA.SetName("LeadingA").ShiftIndex(leadingPeriods, UnixTimeStep(frequency)),
+		leadingB.SetName("LeadingB").ShiftIndex(leadingPeriods, UnixTimeStep(frequency)),
+		lagging.SetName("Lagging").ShiftIndex(-leadingPeriods, UnixTimeStep(frequency)),
 	)
 }

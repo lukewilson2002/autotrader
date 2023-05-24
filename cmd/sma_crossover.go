@@ -21,9 +21,9 @@ func (s *SMAStrategy) Next(t *auto.Trader) {
 	sma2 := t.Data().Closes().Copy().Rolling(s.period2).Mean()
 	// If the shorter SMA crosses above the longer SMA, buy.
 	if auto.CrossoverIndex(*t.Data().Date(-1), sma1, sma2) {
-		t.Buy(1000)
+		t.Buy(1000, 0, 0)
 	} else if auto.CrossoverIndex(*t.Data().Date(-1), sma2, sma1) {
-		t.Sell(1000)
+		t.Sell(1000, 0, 0)
 	}
 }
 

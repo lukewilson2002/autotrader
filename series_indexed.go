@@ -82,6 +82,17 @@ func (s *IndexedSeries[I]) Add(other *IndexedSeries[I]) *IndexedSeries[I] {
 	return s
 }
 
+func (s *IndexedSeries[I]) AddFloat(num float64) *IndexedSeries[I] {
+	for index, row := range s.index {
+		newValue, err := anymath.Add(s.series.Value(row), num)
+		if err != nil {
+			panic(fmt.Errorf("error adding values at index %v: %w", index, err))
+		}
+		s.series.SetValue(row, newValue)
+	}
+	return s
+}
+
 // Copy returns a copy of this series.
 func (s *IndexedSeries[I]) Copy() *IndexedSeries[I] {
 	return s.CopyRange(0, -1)
@@ -120,6 +131,17 @@ func (s *IndexedSeries[I]) Div(other *IndexedSeries[I]) *IndexedSeries[I] {
 			}
 			s.series.SetValue(row, val)
 		}
+	}
+	return s
+}
+
+func (s *IndexedSeries[I]) DivFloat(num float64) *IndexedSeries[I] {
+	for index, row := range s.index {
+		newValue, err := anymath.Divide(s.series.Value(row), num)
+		if err != nil {
+			panic(fmt.Errorf("error dividing values at index %v: %w", index, err))
+		}
+		s.series.SetValue(row, newValue)
 	}
 	return s
 }
@@ -198,6 +220,17 @@ func (s *IndexedSeries[I]) Mul(other *IndexedSeries[I]) *IndexedSeries[I] {
 			}
 			s.series.SetValue(row, val)
 		}
+	}
+	return s
+}
+
+func (s *IndexedSeries[I]) MulFloat(num float64) *IndexedSeries[I] {
+	for index, row := range s.index {
+		newValue, err := anymath.Multiply(s.series.Value(row), num)
+		if err != nil {
+			panic(fmt.Errorf("error multiplying values at index %v: %w", index, err))
+		}
+		s.series.SetValue(row, newValue)
 	}
 	return s
 }
@@ -370,6 +403,17 @@ func (s *IndexedSeries[I]) Sub(other *IndexedSeries[I]) *IndexedSeries[I] {
 			}
 			s.series.SetValue(row, val)
 		}
+	}
+	return s
+}
+
+func (s *IndexedSeries[I]) SubFloat(num float64) *IndexedSeries[I] {
+	for index, row := range s.index {
+		newValue, err := anymath.Subtract(s.series.Value(row), num)
+		if err != nil {
+			panic(fmt.Errorf("error subtracting values at index %v: %w", index, err))
+		}
+		s.series.SetValue(row, newValue)
 	}
 	return s
 }

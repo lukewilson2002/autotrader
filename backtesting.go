@@ -36,7 +36,7 @@ func Backtest(trader *Trader) {
 			trader.Tick()    // Allow the trader to process the current candlesticks.
 			broker.Advance() // Give the trader access to the next candlestick.
 		}
-		trader.closeOrdersAndPositions() // Close any outstanding trades now.
+		trader.CloseOrdersAndPositions() // Close any outstanding trades now.
 
 		log.Printf("Backtest completed on %d candles. Opening report...\n", trader.Stats().Dated.Len())
 		stats := trader.Stats()

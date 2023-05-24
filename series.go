@@ -468,7 +468,7 @@ func (s *RollingSeries) Period(row int) []any {
 //
 // Will work with all signed int and float types. Ignores all other values.
 func (s *RollingSeries) Max() *Series {
-	return s.series.Map(func(i int, _ any) any {
+	return s.series.MapReverse(func(i int, _ any) any {
 		period := s.Period(i)
 		if len(period) == 0 {
 			return 0
@@ -514,7 +514,7 @@ func (s *RollingSeries) Max() *Series {
 //
 // Will work with all signed int and float types. Ignores all other values.
 func (s *RollingSeries) Min() *Series {
-	return s.series.Map(func(i int, _ any) any {
+	return s.series.MapReverse(func(i int, _ any) any {
 		period := s.Period(i)
 		if len(period) == 0 {
 			return 0

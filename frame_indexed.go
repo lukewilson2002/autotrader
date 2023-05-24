@@ -128,7 +128,7 @@ func (f *IndexedFrame[I]) String() string {
 	// Print the first ten rows and the last ten rows if the IndexedFrame has more than 20 rows.
 	if f.Len() > 20 {
 		for i := 0; i < 10; i++ {
-			printRow(i, indexes[i])
+			printRow(i+1, indexes[i])
 		}
 		fmt.Fprintf(t, "...\t")
 		for range names {
@@ -136,11 +136,11 @@ func (f *IndexedFrame[I]) String() string {
 		}
 		fmt.Fprintln(t) // Print new line character.
 		for i := 10; i > 0; i-- {
-			printRow(i, indexes[len(indexes)-i])
+			printRow(len(indexes)-i, indexes[len(indexes)-i])
 		}
 	} else {
 		for i := 0; i < f.Len(); i++ {
-			printRow(i, indexes[i])
+			printRow(i+1, indexes[i])
 		}
 	}
 

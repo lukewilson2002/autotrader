@@ -19,6 +19,14 @@
             "mode": "auto",
             "program": "${workspaceFolder}/cmd/sma_crossover.go",
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Run Ichimoku",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/ichimoku.go",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
