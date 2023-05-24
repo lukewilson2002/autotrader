@@ -54,9 +54,9 @@ func Ichimoku(price *IndexedFrame[UnixTime], convPeriod, basePeriod, leadingPeri
 
 	conv := price.Highs().Copy().Rolling(convPeriod).Max().Add(price.Lows().Copy().Rolling(convPeriod).Min()).DivFloat(2)
 	base := price.Highs().Copy().Rolling(basePeriod).Max().Add(price.Lows().Copy().Rolling(basePeriod).Min()).DivFloat(2)
-	lagging := price.Closes().Copy()
 	leadingA := conv.Copy().Add(base).DivFloat(2)
 	leadingB := price.Highs().Copy().Rolling(leadingPeriods).Max().Add(price.Lows().Copy().Rolling(leadingPeriods).Min()).DivFloat(2)
+	lagging := price.Closes().Copy()
 
 	// Return a DataFrame of the results.
 	return NewIndexedFrame(
@@ -64,6 +64,6 @@ func Ichimoku(price *IndexedFrame[UnixTime], convPeriod, basePeriod, leadingPeri
 		base.SetName("Base"),
 		leadingA.SetName("LeadingA").ShiftIndex(leadingPeriods, UnixTimeStep(frequency)),
 		leadingB.SetName("LeadingB").ShiftIndex(leadingPeriods, UnixTimeStep(frequency)),
-		lagging.SetName("Lagging").ShiftIndex(-leadingPeriods, UnixTimeStep(frequency)),
+		lagging.SetName("Lagging").ShiftIndex(-basePeriod, UnixTimeStep(frequency)),
 	)
 }

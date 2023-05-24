@@ -34,6 +34,7 @@ func (s *IchimokuStrategy) Next(t *auto.Trader) {
 	//  - price closed above the cloud at the current time
 	//  - conversion above baseline
 	//  - future cloud must be green (LeadingA > LeadingB)
+	//  - lagging span above lagging cloud
 
 	// Oposite conditions for sell...
 
@@ -52,18 +53,33 @@ func (s *IchimokuStrategy) Next(t *auto.Trader) {
 			t.CloseOrdersAndPositions()
 		}
 	} else {
+		// v := a - b , then comparing v > 0 is the same as a > b
+		closeToLeadA := data.CloseIndex(now) - leadA.FloatIndex(now)
+		convToBase := conv.FloatIndex(now) - base.FloatIndex(now)
+		leadAToLeadB := leadA.FloatIndex(now) - leadB.FloatIndex(now)
+		futureLeadAToLeadB := leadA.Float(-1) - leadB.Float(-1)
+		laggingToLeadA := lagging.FloatIndex(*laggingTime) - leadA.FloatIndex(*laggingTime)
+
+		// tw := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+		// fmt.Fprintf(tw, "closeToLeadA\t%v\n", closeToLeadA)
+		// fmt.Fprintf(tw, "convToBase\t%v\n", convToBase)
+		// fmt.Fprintf(tw, "leadAToLeadB\t%v\n", leadAToLeadB)
+		// fmt.Fprintf(tw, "futureLeadAToLeadB\t%v\n", futureLeadAToLeadB)
+		// fmt.Fprintf(tw, "laggingToLeadA\t%v\n\n", laggingToLeadA)
+		// tw.Flush()
+
 		// Look to enter a trade
-		if data.CloseIndex(now) > leadA.FloatIndex(now) &&
-			leadA.FloatIndex(now) > leadB.FloatIndex(now) &&
-			conv.FloatIndex(now) > base.FloatIndex(now) &&
-			leadA.Float(-1) > leadB.Float(-1) &&
-			lagging.FloatIndex(*laggingTime) > leadA.FloatIndex(*laggingTime) {
+		if closeToLeadA > 0 &&
+			leadAToLeadB > 0 &&
+			convToBase > 0 &&
+			futureLeadAToLeadB > 0 &&
+			laggingToLeadA > 0 {
 			t.Buy(10000, 0, 0)
-		} else if data.CloseIndex(now) < leadA.FloatIndex(now) &&
-			leadA.FloatIndex(now) < leadB.FloatIndex(now) &&
-			conv.FloatIndex(now) < base.FloatIndex(now) &&
-			leadA.Float(-1) < leadB.Float(-1) &&
-			lagging.FloatIndex(*laggingTime) < leadA.FloatIndex(*laggingTime) {
+		} else if closeToLeadA < 0 &&
+			leadAToLeadB < 0 &&
+			convToBase < 0 &&
+			futureLeadAToLeadB < 0 &&
+			laggingToLeadA < 0 {
 			t.Sell(10000, 0, 0)
 		}
 	}
@@ -74,7 +90,7 @@ func main() {
 	auto.Backtest(auto.NewTrader(auto.TraderConfig{
 		Broker:        auto.NewTestBroker(broker, nil, 10000, 50, 0.0002, 0),
 		Strategy:      &IchimokuStrategy{convPeriod: 9, basePeriod: 26, leadingPeriods: 52},
-		Symbol:        "USD_JPY",
+		Symbol:        "EUR_USD",
 		Frequency:     "M15",
 		CandlesToKeep: 2500,
 	}))
