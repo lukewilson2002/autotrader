@@ -58,7 +58,7 @@ func (b *OandaBroker) Ask(symbol string) float64 {
 	return 0
 }
 
-func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.Frame, error) {
+func (b *OandaBroker) Candles(symbol, frequency string, count int) (*auto.IndexedFrame[auto.UnixTime], error) {
 	req, err := http.NewRequest("GET", b.baseUrl+"/v3/accounts/"+b.accountID+"/instruments/"+symbol+"/candles", nil)
 	if err != nil {
 		return nil, err
@@ -113,11 +113,11 @@ func (b *OandaBroker) Positions() []auto.Position {
 func (b *OandaBroker) fetchAccountUpdates() {
 }
 
-func newDataframe(candles *CandlestickResponse) (*auto.Frame, error) {
+func newDataframe(candles *CandlestickResponse) (*auto.IndexedFrame[auto.UnixTime], error) {
 	if candles == nil {
 		return nil, fmt.Errorf("candles is nil or empty")
 	}
-	data := auto.NewDOHLCVFrame()
+	data := auto.NewDOHLCVIndexedFrame[auto.UnixTime]()
 	for _, candle := range candles.Candles {
 		if candle.Mid == nil {
 			return nil, fmt.Errorf("mid is nil or empty")
@@ -127,7 +127,7 @@ func newDataframe(candles *CandlestickResponse) (*auto.Frame, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error parsing mid field of a candlestick: %w", err)
 		}
-		data.PushCandle(candle.Time, o, h, l, c, int64(candle.Volume))
+		data.PushCandle(auto.UnixTime(candle.Time.Unix()), o, h, l, c, int64(candle.Volume))
 	}
 	return data, nil
 }

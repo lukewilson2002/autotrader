@@ -23,12 +23,12 @@ type Trader struct {
 	Log           *log.Logger
 	EOF           bool
 
-	data  *Frame
+	data  *IndexedFrame[UnixTime]
 	sched *gocron.Scheduler
 	stats *TraderStats
 }
 
-func (t *Trader) Data() *Frame {
+func (t *Trader) Data() *IndexedFrame[UnixTime] {
 	return t.data
 }
 
@@ -107,13 +107,12 @@ func (t *Trader) Init() {
 
 // Tick updates the current state of the market and runs the strategy.
 func (t *Trader) Tick() {
-	t.fetchData() // Fetch the latest candlesticks from the broker.
-	// t.Log.Println(t.data.Close(-1))
+	t.fetchData()      // Fetch the latest candlesticks from the broker.
 	t.Strategy.Next(t) // Run the strategy.
 
 	// Update the stats.
 	err := t.stats.Dated.PushValues(map[string]any{
-		"Date":   t.data.Date(-1),
+		"Date":   t.data.Date(-1).Time(),
 		"Equity": t.Broker.NAV(),
 		"Profit": t.Broker.PL(),
 		"Drawdown": func() float64 {
@@ -164,14 +163,14 @@ func (t *Trader) fetchData() {
 
 func (t *Trader) Buy(units float64) {
 	t.closeOrdersAndPositions()
-	t.Log.Printf("Buy %f units", units)
+	t.Log.Printf("Buy %v units", units)
 	t.Broker.Order(Market, t.Symbol, units, 0, 0, 0)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{units, false})
 }
 
 func (t *Trader) Sell(units float64) {
 	t.closeOrdersAndPositions()
-	t.Log.Printf("Sell %f units", units)
+	t.Log.Printf("Sell %v units", units)
 	t.Broker.Order(Market, t.Symbol, -units, 0, 0, 0)
 	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{-units, false})
 }
@@ -179,13 +178,13 @@ func (t *Trader) Sell(units float64) {
 func (t *Trader) closeOrdersAndPositions() {
 	for _, order := range t.Broker.OpenOrders() {
 		if order.Symbol() == t.Symbol {
-			t.Log.Printf("Cancelling order %s (%f units)", order.Id(), order.Units())
+			t.Log.Printf("Cancelling order: %v units", order.Units())
 			order.Cancel()
 		}
 	}
 	for _, position := range t.Broker.OpenPositions() {
 		if position.Symbol() == t.Symbol {
-			t.Log.Printf("Closing position %s (%f units, %f PL)", position.Id(), position.Units(), position.PL())
+			t.Log.Printf("Closing position: %v units, $%.2f PL", position.Units(), position.PL())
 			position.Close()
 			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{position.Units(), true})
 		}

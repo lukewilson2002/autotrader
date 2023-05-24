@@ -18,7 +18,7 @@ func Crossover(a, b *Series) bool {
 	return a.Float(-1) > b.Float(-1) && a.Float(-2) <= b.Float(-2)
 }
 
-func CrossoverIndex[I comparable](index I, a, b *IndexedSeries[I]) bool {
+func CrossoverIndex[I Index](index I, a, b *IndexedSeries[I]) bool {
 	aRow, bRow := a.Row(index), b.Row(index)
 	if aRow < 1 || bRow < 1 {
 		return false

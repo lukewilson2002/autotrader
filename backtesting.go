@@ -40,6 +40,7 @@ func Backtest(trader *Trader) {
 
 		log.Printf("Backtest completed on %d candles. Opening report...\n", trader.Stats().Dated.Len())
 		stats := trader.Stats()
+		// log.Println(trader.Stats().Dated.String())
 
 		// Divide net profit by maximum drawdown to get the profit factor.
 		var maxDrawdown float64
@@ -204,13 +205,13 @@ func Backtest(trader *Trader) {
 	}
 }
 
-func newKline(dohlcv *Frame, trades *Series, dateLayout string) *charts.Kline {
+func newKline(dohlcv *IndexedFrame[UnixTime], trades *Series, dateLayout string) *charts.Kline {
 	kline := charts.NewKLine()
 
 	x := make([]string, dohlcv.Len())
 	y := make([]opts.KlineData, dohlcv.Len())
 	for i := 0; i < dohlcv.Len(); i++ {
-		x[i] = dohlcv.Date(i).Format(dateLayout)
+		x[i] = dohlcv.Date(i).Time().Format(dateLayout)
 		y[i] = opts.KlineData{Value: [4]float64{
 			dohlcv.Open(i),
 			dohlcv.Close(i),
@@ -325,7 +326,7 @@ func seriesStringArray(s *Series, dateLayout string) []string {
 type TestBroker struct {
 	SignalManager
 	DataBroker Broker
-	Data       *Frame
+	Data       *IndexedFrame[UnixTime]
 	Cash       float64
 	Leverage   float64
 	Spread     float64 // Number of pips to add to the price when buying and subtract when selling. (Forex)
@@ -337,7 +338,7 @@ type TestBroker struct {
 	spreadCollectedUSD float64 // Total amount of spread collected from trades.
 }
 
-func NewTestBroker(dataBroker Broker, data *Frame, cash, leverage, spread float64, startCandles int) *TestBroker {
+func NewTestBroker(dataBroker Broker, data *IndexedFrame[UnixTime], cash, leverage, spread float64, startCandles int) *TestBroker {
 	return &TestBroker{
 		DataBroker:  dataBroker,
 		Data:        data,
@@ -445,7 +446,7 @@ func (b *TestBroker) Ask(_ string) float64 {
 // Candles returns the last count candles for the given symbol and frequency. If count is greater than the number of candles, then a dataframe with zero rows is returned.
 //
 // If the TestBroker has a data broker set, then it will use that to get candles. Otherwise, it will return the candles from the data that was set. The first call to Candles will fetch candles from the data broker if it is set, so it is recommended to set the data broker before the first call to Candles and to call Candles the first time with the number of candles you want to fetch.
-func (b *TestBroker) Candles(symbol string, frequency string, count int) (*Frame, error) {
+func (b *TestBroker) Candles(symbol string, frequency string, count int) (*IndexedFrame[UnixTime], error) {
 	start := Max(Max(b.candleCount, 1)-count, 0)
 	adjCount := b.candleCount - start
 

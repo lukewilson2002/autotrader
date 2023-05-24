@@ -1,9 +1,15 @@
 package autotrader
 
 import (
+	"bytes"
 	"fmt"
+	"text/tabwriter"
+	"time"
 
 	anymath "github.com/spatialcurrent/go-math/pkg/math"
+	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 type ErrIndexExists struct {
@@ -14,26 +20,49 @@ func (e ErrIndexExists) Error() string {
 	return fmt.Sprintf("index already exists: %v", e.any)
 }
 
-// IndexedSeries is a Series with a custom index type.
-type IndexedSeries[I comparable] struct {
-	*SignalManager
-	series *Series
-	index  map[I]int
+// UnixTime is a wrapper over the number of milliseconds since January 1, 1970, AKA Unix time.
+type UnixTime int64
+
+// Time converts the UnixTime to a time.Time.
+func (t UnixTime) Time() time.Time {
+	return time.Unix(int64(t), 0)
 }
 
-func NewIndexedSeries[I comparable](name string, vals map[I]any) *IndexedSeries[I] {
+// String returns the string representation of the UnixTime.
+func (t UnixTime) String() string {
+	return t.Time().UTC().String()
+}
+
+// UnixTimeStep returns a function that adds a number of increments to a UnixTime.
+func UnixTimeStep(frequency time.Duration) func(UnixTime, int) UnixTime {
+	return func(t UnixTime, amt int) UnixTime {
+		return UnixTime(t.Time().Add(frequency * time.Duration(amt)).Unix())
+	}
+}
+
+type Index interface {
+	comparable
+	constraints.Ordered
+}
+
+// IndexedSeries is a Series with a custom index type.
+type IndexedSeries[I Index] struct {
+	*SignalManager
+	series  *Series
+	indexes []I // Sorted slice of indexes.
+	index   map[I]int
+}
+
+// NewIndexedSeries returns a new IndexedSeries with the given name and index type.
+func NewIndexedSeries[I Index, V any](name string, vals map[I]V) *IndexedSeries[I] {
 	out := &IndexedSeries[I]{
 		&SignalManager{},
 		NewSeries(name),
-		make(map[I]int, len(vals)),
+		make([]I, 0),
+		make(map[I]int),
 	}
-	for key, val := range vals {
-		// Check that the key is not already in the map.
-		if _, ok := out.index[key]; ok {
-			panic(ErrIndexExists{key})
-		}
-		out.index[key] = out.series.Len()
-		out.series.Push(val)
+	for index, val := range vals {
+		out.Insert(index, val)
 	}
 	return out
 }
@@ -53,19 +82,30 @@ func (s *IndexedSeries[I]) Add(other *IndexedSeries[I]) *IndexedSeries[I] {
 	return s
 }
 
+// Copy returns a copy of this series.
 func (s *IndexedSeries[I]) Copy() *IndexedSeries[I] {
 	return s.CopyRange(0, -1)
 }
 
+// CopyRange returns a copy of this series with the given range.
 func (s *IndexedSeries[I]) CopyRange(start, count int) *IndexedSeries[I] {
+	start, end := s.series.Range(start, count)
+	if start == end {
+		return NewIndexedSeries[I, any](s.Name(), nil)
+	}
+	count = end - start
+
 	// Copy the index values over.
-	index := make(map[I]int, len(s.index))
-	for key, val := range s.index {
-		index[key] = val
+	indexes := make([]I, count)
+	copy(indexes, s.indexes[start:end])
+	index := make(map[I]int, count)
+	for i, _index := range indexes {
+		index[_index] = i
 	}
 	return &IndexedSeries[I]{
 		&SignalManager{},
 		s.series.CopyRange(start, count),
+		indexes,
 		index,
 	}
 }
@@ -107,17 +147,19 @@ func (s *IndexedSeries[I]) ForEach(f func(i int, val any)) *IndexedSeries[I] {
 }
 
 // Index returns the index of the given row or nil if the row is out of bounds. row is an EasyIndex.
+//
+// The performance of this operation is O(1).
 func (s *IndexedSeries[I]) Index(row int) *I {
 	row = EasyIndex(row, s.series.Len())
-	for key, val := range s.index {
-		if val == row {
-			return &key
-		}
+	if row < 0 || row >= len(s.indexes) {
+		return nil
 	}
-	return nil
+	return &s.indexes[row]
 }
 
 // Row returns the row of the given index or -1 if the index does not exist.
+//
+// The performance of this operation is O(1).
 func (s *IndexedSeries[I]) Row(index I) int {
 	if i, ok := s.index[index]; ok {
 		return i
@@ -165,30 +207,45 @@ func (s *IndexedSeries[I]) Name() string {
 	return s.series.Name()
 }
 
-// Push adds a value to the end of the series and returns the series or an error if the index already exists. The error is of type ErrIndexExists.
-func (s *IndexedSeries[I]) Push(index I, val any) (*IndexedSeries[I], error) {
-	// Check that the key is not already in the map.
-	if _, ok := s.index[index]; ok {
-		return nil, ErrIndexExists{index}
+// insertIndex will insert the provided index somewhere in the sorted slice of indexes. If the index already exists, the existing index will be returned.
+func (s *IndexedSeries[I]) insertIndex(index I) (row int, exists bool) {
+	// Sort the indexes.
+	idx, found := slices.BinarySearch(s.indexes, index)
+	if found {
+		return idx, true
 	}
-	s.index[index] = s.series.Len()
-	s.series.Push(val)
-	return s, nil
+	s.index[index] = idx // Create the index to row mapping.
+	// Check if we're just appending the index. Just an optimization.
+	if idx >= len(s.indexes) {
+		s.indexes = append(s.indexes, index) // Append the index to our sorted slice of indexes.
+		return idx, false
+	}
+	s.indexes = slices.Insert(s.indexes, idx, index)
+	// Shift the row values of all indexes after the inserted index.
+	for i := idx + 1; i < len(s.indexes); i++ {
+		s.index[s.indexes[i]]++
+	}
+	return idx, false
 }
 
-func (s *IndexedSeries[I]) Pop() any {
-	return s.Remove(s.series.Len() - 1)
+// Insert adds a value to the series at the given index. If the index already exists, the value will be overwritten. The indexes are sorted using comparison operators.
+func (s *IndexedSeries[I]) Insert(index I, val any) *IndexedSeries[I] {
+	row, exists := s.insertIndex(index)
+	if exists {
+		s.series.SetValue(row, val)
+		return s
+	}
+	s.series.Insert(row, val)
+	return s
 }
 
 // Remove deletes the row at the given index and returns it.
-func (s *IndexedSeries[I]) Remove(row int) any {
-	// Remove the index from the map.
-	for index, j := range s.index {
-		if j == row {
-			delete(s.index, index)
-			break
-		}
+func (s *IndexedSeries[I]) Remove(index I) any {
+	row, ok := s.index[index]
+	if !ok {
+		return nil
 	}
+	delete(s.index, index)
 	// Shift each index after the removed index down by one.
 	for key, j := range s.index {
 		if j > row {
@@ -197,15 +254,6 @@ func (s *IndexedSeries[I]) Remove(row int) any {
 	}
 	// Remove the value from the series.
 	return s.series.Remove(row)
-}
-
-// RemoveIndex deletes the row at the given index and returns it. If index does not exist, nil is returned.
-func (s *IndexedSeries[I]) RemoveIndex(index I) any {
-	// Check that the key is in the map.
-	if i, ok := s.index[index]; ok {
-		return s.Remove(i)
-	}
-	return nil
 }
 
 // RemoveRange deletes the rows in the given range and returns the series.
@@ -220,6 +268,8 @@ func (s *IndexedSeries[I]) RemoveRange(start, count int) *IndexedSeries[I] {
 	// Remove the indexes from the map.
 	for index, i := range s.index {
 		if i >= start && i < end {
+			idx := slices.Index(s.indexes, index)
+			slices.Delete(s.indexes, idx, idx+1)
 			delete(s.index, index)
 		}
 	}
@@ -236,19 +286,8 @@ func (s *IndexedSeries[I]) RemoveRange(start, count int) *IndexedSeries[I] {
 
 // Reverse reverses the rows of the series.
 func (s *IndexedSeries[I]) Reverse() *IndexedSeries[I] {
-	// Reverse the indexes.
-	s.ReverseIndexes()
 	// Reverse the values.
 	_ = s.series.Reverse()
-	return s
-}
-
-// ReverseIndexes reverses the indexes of the series but not the rows.
-func (s *IndexedSeries[I]) ReverseIndexes() *IndexedSeries[I] {
-	seriesLen := s.series.Len()
-	for key, i := range s.index {
-		s.index[key] = seriesLen - i - 1
-	}
 	return s
 }
 
@@ -284,6 +323,17 @@ func (s *IndexedSeries[I]) ShiftIndex(periods int, step func(prev I, amt int) I)
 	if periods == 0 {
 		return s
 	}
+	// Update the index values.
+	for index, i := range s.index {
+		s.indexes[i] = step(index, periods)
+	}
+
+	// Reassign the index map.
+	maps.Clear(s.index)
+	for i, index := range s.indexes {
+		s.index[index] = i
+	}
+
 	// Shift the indexes.
 	newIndexes := make(map[I]int, len(s.index))
 	for index, i := range s.index {
@@ -291,6 +341,23 @@ func (s *IndexedSeries[I]) ShiftIndex(periods int, step func(prev I, amt int) I)
 	}
 	s.index = newIndexes
 	return s
+}
+
+func (s *IndexedSeries[I]) String() string {
+	if s == nil {
+		return fmt.Sprintf("%T[nil]", s)
+	}
+
+	buffer := new(bytes.Buffer)
+	t := tabwriter.NewWriter(buffer, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(t, "%T[%d]\n", s, s.Len())
+	fmt.Fprintf(t, "[Row]\t[Index]\t%s\t\n", s.series.Name())
+
+	for i, index := range s.indexes {
+		fmt.Fprintf(t, "%d\t%v\t%v\t\n", i, index, s.series.Value(i))
+	}
+	_ = t.Flush()
+	return buffer.String()
 }
 
 // Sub subtracts the other series values from this series values. The other series must have the same index type. The values are subtracted by comparing their indexes. For example, subtracting two IndexedSeries that share no indexes will result in no change of values.
@@ -331,12 +398,12 @@ func (s *IndexedSeries[I]) ValueRange(start, count int) []any {
 	return s.series.ValueRange(start, count)
 }
 
-type IndexedRollingSeries[I comparable] struct {
+type IndexedRollingSeries[I Index] struct {
 	rolling *RollingSeries
 	series  *IndexedSeries[I]
 }
 
-func NewIndexedRollingSeries[I comparable](series *IndexedSeries[I], period int) *IndexedRollingSeries[I] {
+func NewIndexedRollingSeries[I Index](series *IndexedSeries[I], period int) *IndexedRollingSeries[I] {
 	return &IndexedRollingSeries[I]{NewRollingSeries(series.series, period), series}
 }
 

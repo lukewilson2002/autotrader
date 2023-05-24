@@ -10,30 +10,14 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-type UnixTime int64
-
-func (t UnixTime) Time() time.Time {
-	return time.Unix(int64(t), 0)
-}
-
-func (t UnixTime) String() string {
-	return t.Time().String()
-}
-
-func UnixTimeStep(frequency time.Duration) func(UnixTime, int) UnixTime {
-	return func(t UnixTime, amt int) UnixTime {
-		return UnixTime(t.Time().Add(frequency * time.Duration(amt)).Unix())
-	}
-}
-
 // It is worth mentioning that if you want to use time.Time as an index type, then you should use the public UnixTime as a Unix int64 time which can be converted back into a time.Time easily. See [time.Time](https://pkg.go.dev/time#Time) for more information on why you should not compare Time with == (or a map, which is what the IndexedFrame uses).
-type IndexedFrame[I comparable] struct {
+type IndexedFrame[I Index] struct {
 	*SignalManager
 	series map[string]*IndexedSeries[I]
 }
 
 // It is worth mentioning that if you want to use time.Time as an index type, then you should use int64 as a Unix time. See [time.Time](https://pkg.go.dev/time#Time) for more information on why you should not compare Time with == (or a map, which is what the IndexedFrame uses).
-func NewIndexedFrame[I comparable](series ...*IndexedSeries[I]) *IndexedFrame[I] {
+func NewIndexedFrame[I Index](series ...*IndexedSeries[I]) *IndexedFrame[I] {
 	f := &IndexedFrame[I]{
 		&SignalManager{},
 		make(map[string]*IndexedSeries[I], len(series)),
@@ -46,10 +30,10 @@ func NewIndexedFrame[I comparable](series ...*IndexedSeries[I]) *IndexedFrame[I]
 // Use the PushCandle method to add candlesticks in an easy and type-safe way.
 //
 // It is worth mentioning that if you want to use time.Time as an index type, then you should use int64 as a Unix time. See [time.Time](https://pkg.go.dev/time#Time) for more information on why you should not compare Time with == (or a map, which is what the IndexedFrame uses).
-func NewDOHLCVIndexedFrame[I comparable]() *IndexedFrame[I] {
+func NewDOHLCVIndexedFrame[I Index]() *IndexedFrame[I] {
 	frame := NewIndexedFrame[I]()
 	for _, name := range []string{"Open", "High", "Low", "Close", "Volume"} {
-		frame.PushSeries(NewIndexedSeries[I](name, nil))
+		frame.PushSeries(NewIndexedSeries[I, any](name, nil))
 	}
 	return frame
 }
@@ -140,7 +124,7 @@ func (f *IndexedFrame[I]) String() string {
 		fmt.Fprintf(t, "%d\t%v\t%s\t\n", row, index, strings.Join(seriesVals, "\t"))
 	}
 
-	indexes := maps.Keys(series[0].index)
+	indexes := series[0].indexes
 	// Print the first ten rows and the last ten rows if the IndexedFrame has more than 20 rows.
 	if f.Len() > 20 {
 		for i := 0; i < 10; i++ {
@@ -226,11 +210,6 @@ func (f *IndexedFrame[I]) VolumeIndex(index I) int {
 	return f.IntIndex("Volume", index)
 }
 
-// Dates returns a Series of all the dates in the IndexedFrame. This is equivalent to calling Series("Date").
-func (f *IndexedFrame[I]) Dates() *IndexedSeries[I] {
-	return f.Series("Date")
-}
-
 // Opens returns a FloatSeries of all the open prices in the IndexedFrame. This is equivalent to calling Series("Open").
 func (f *IndexedFrame[I]) Opens() *IndexedSeries[I] {
 	return f.Series("Open")
@@ -276,11 +255,11 @@ func (f *IndexedFrame[I]) PushCandle(date I, open, high, low, close float64, vol
 	if !f.ContainsDOHLCV() {
 		return fmt.Errorf("IndexedFrame does not contain Open, High, Low, Close, Volume columns")
 	}
-	f.series["Open"].Push(date, open)
-	f.series["High"].Push(date, high)
-	f.series["Low"].Push(date, low)
-	f.series["Close"].Push(date, close)
-	f.series["Volume"].Push(date, volume)
+	f.series["Open"].Insert(date, open)
+	f.series["High"].Insert(date, high)
+	f.series["Low"].Insert(date, low)
+	f.series["Close"].Insert(date, close)
+	f.series["Volume"].Insert(date, volume)
 	return nil
 }
 

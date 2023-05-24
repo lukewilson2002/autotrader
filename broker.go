@@ -73,7 +73,7 @@ type Broker interface {
 	Bid(symbol string) float64                   // Bid returns the sell price of the symbol.
 	Ask(symbol string) float64                   // Ask returns the buy price of the symbol, which is typically higher than the sell price.
 	// Candles returns a dataframe of candles for the given symbol, frequency, and count by querying the broker.
-	Candles(symbol, frequency string, count int) (*Frame, error)
+	Candles(symbol, frequency string, count int) (*IndexedFrame[UnixTime], error)
 	// Order places an order with orderType for the given symbol and returns an error if it fails. A short position has negative units. If the orderType is Market, the price argument will be ignored and the order will be fulfilled at current price. Otherwise, price is used to set the target price for Stop and Limit orders. If stopLoss or takeProfit are zero, they will not be set. If the stopLoss is greater than the current price for a long position or less than the current price for a short position, the order will fail. Likewise for takeProfit. If the stopLoss is a negative number, it is used as a trailing stop loss to represent how many price points away the stop loss should be from the current price.
 	Order(orderType OrderType, symbol string, units, price, stopLoss, takeProfit float64) (Order, error)
 	NAV() float64 // NAV returns the net asset value of the account.

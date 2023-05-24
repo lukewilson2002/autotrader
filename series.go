@@ -108,6 +108,19 @@ func (s *Series) Reverse() *Series {
 	return s
 }
 
+func (s *Series) Insert(i int, value any) *Series {
+	i = EasyIndex(i, s.Len()+1)
+	if i < 0 {
+		return s
+	} else if i <= s.Len() { // Remember the length will grow by 1. We want to allow inserting at the end.
+		s.data = slices.Insert(s.data, i, value)
+		s.SignalEmit("LengthChanged", s.Len())
+	} else {
+		_ = s.Push(value) // Emits a LengthChanged signal
+	}
+	return s
+}
+
 // Remove removes and returns the value at index i and emits a LengthChanged signal. If i is out of bounds then nil is returned.
 func (s *Series) Remove(i int) any {
 	if i = EasyIndex(i, s.Len()); i < s.Len() && i >= 0 {
@@ -437,14 +450,17 @@ func NewRollingSeries(series *Series, period int) *RollingSeries {
 
 // Period returns a slice of 'any' values with a length up to the period of the RollingSeries. The last item in the slice is the item at row. If row is out of bounds, nil is returned.
 func (s *RollingSeries) Period(row int) []any {
-	items := make([]any, 0, s.period)
 	row = EasyIndex(row, s.series.Len())
-	if row < 0 || row >= s.series.Len() {
-		return items
+	// Collect a valid range which is clamped between bounds for safety.
+	start := Max(row-(s.period-1), 0)           // Don't let the start go out of bounds.
+	period := Min(s.period, row-start+1)        // Maximum period we can get.
+	start, end := s.series.Range(start, period) // Calculate start and end range within bounds.
+	if start == end {
+		return nil
 	}
-	for j := row; j > row-s.period && j >= 0; j-- {
-		items = slices.Insert(items, 0, s.series.Value(j))
-	}
+	count := end - start
+	items := make([]any, count)
+	copy(items, s.series.data[start:end])
 	return items
 }
 

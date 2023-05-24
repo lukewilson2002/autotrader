@@ -96,11 +96,11 @@ func TestIndexedFrame(t *testing.T) {
 	if data.Close(-1) != 1.0 {
 		t.Fatalf("Expected latest close to be 1.0, got %f", data.Close(-1))
 	}
-	if !data.Date(0).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
+	if !data.Date(-1).Time().Equal(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("Expected first date to be 2021-05-15, got %v", data.Date(0))
 	}
-	if index := UnixTime(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC).Unix()); data.CloseIndex(index) != 1.4 {
-		t.Fatalf("Expected close at 2021-05-15 to be 1.4, got %f", data.CloseIndex(index))
+	if index := UnixTime(time.Date(2021, 5, 15, 0, 0, 0, 0, time.UTC).Unix()); data.CloseIndex(index) != 1.0 {
+		t.Fatalf("Expected close at 2021-05-15 to be 1.0, got %f", data.CloseIndex(index))
 	}
 
 	t.Log(data.String())

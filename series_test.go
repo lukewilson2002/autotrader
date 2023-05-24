@@ -151,8 +151,40 @@ func TestRollingSeries(t *testing.T) {
 	}
 }
 
+func TestIndexedSeriesInsert(t *testing.T) {
+	indexed := NewIndexedSeries("test", map[UnixTime]float64{
+		UnixTime(0):  1.0,
+		UnixTime(2):  2.0,
+		UnixTime(4):  3.0,
+		UnixTime(6):  4.0,
+		UnixTime(8):  5.0,
+		UnixTime(10): 6.0,
+	})
+	if indexed.Len() != 6 {
+		t.Fatalf("Expected 6 rows, got %d", indexed.Len())
+	}
+	for i := 0; i < 6; i++ {
+		if val := indexed.Float(i); val != float64(i+1) {
+			t.Errorf("(%d)\tExpected %f, got %v", i, float64(i+1), val)
+		}
+	}
+	for i := 0; i < 6; i++ {
+		index := UnixTime(i * 2)
+		if val := indexed.ValueIndex(index); val != float64(i+1) {
+			t.Errorf("(%v)\tExpected %f, got %v", index, float64(i+1), val)
+		}
+	}
+	indexed.Insert(UnixTime(5), -1.0)
+	if indexed.Len() != 7 {
+		t.Fatalf("Expected 7 rows, got %d", indexed.Len())
+	}
+	if indexed.ValueIndex(UnixTime(5)) != -1.0 {
+		t.Errorf("Expected value at index 5 to be -1.0, got %v", indexed.ValueIndex(UnixTime(5)))
+	}
+}
+
 func TestIndexedSeries(t *testing.T) {
-	intIndexed := NewIndexedSeries("test", map[int]any{
+	intIndexed := NewIndexedSeries("test", map[int]float64{
 		0:  1.0,
 		2:  2.0,
 		4:  3.0,
@@ -160,6 +192,7 @@ func TestIndexedSeries(t *testing.T) {
 		8:  5.0,
 		10: 6.0,
 	})
+
 	if intIndexed.Len() != 6 {
 		t.Fatalf("Expected 6 rows, got %d", intIndexed.Len())
 	}
@@ -167,10 +200,11 @@ func TestIndexedSeries(t *testing.T) {
 		t.Errorf("Expected value at index 4 to be 3.0, got %v", intIndexed.ValueIndex(4))
 	}
 
-	floatIndexed := NewIndexedSeries[float64]("test", nil)
-	floatIndexed.Push(0.0, 1.0)
-	floatIndexed.Push(2.0, 2.0)
-	floatIndexed.Push(4.0, 3.0)
+	floatIndexed := NewIndexedSeries("test", map[float64]float64{
+		0.0: 1.0,
+		2.0: 2.0,
+		4.0: 3.0,
+	})
 	if floatIndexed.Len() != 3 {
 		t.Fatalf("Expected 3 rows, got %d", floatIndexed.Len())
 	}
@@ -178,15 +212,15 @@ func TestIndexedSeries(t *testing.T) {
 		t.Errorf("Expected value at index 4.0 to be 3.0, got %v", floatIndexed.ValueIndex(4.0))
 	}
 
-	timeIndexed := NewIndexedSeries("test", map[int64]any{
-		time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix(): 1.0,
-		time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(): 2.0,
-		time.Date(2018, 1, 3, 0, 0, 0, 0, time.UTC).Unix(): 3.0,
+	timeIndexed := NewIndexedSeries("test", map[UnixTime]float64{
+		UnixTime(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix()): 1.0,
+		UnixTime(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix()): 2.0,
+		UnixTime(time.Date(2018, 1, 3, 0, 0, 0, 0, time.UTC).Unix()): 3.0,
 	})
 	if timeIndexed.Len() != 3 {
 		t.Fatalf("Expected 3 rows, got %d", timeIndexed.Len())
 	}
-	if index := time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(); timeIndexed.ValueIndex(index).(float64) != 2.0 {
+	if index := UnixTime(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix()); timeIndexed.ValueIndex(index).(float64) != 2.0 {
 		t.Errorf("Expected value at index 2018-01-02 to be 2.0, got %v", timeIndexed.ValueIndex(index))
 	}
 
@@ -194,38 +228,14 @@ func TestIndexedSeries(t *testing.T) {
 	if doubledTimeIndexed.Len() != 3 {
 		t.Fatalf("Expected 3 rows, got %d", doubledTimeIndexed.Len())
 	}
-	if index := time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix(); doubledTimeIndexed.ValueIndex(index).(float64) != 4.0 {
+	if index := UnixTime(time.Date(2018, 1, 2, 0, 0, 0, 0, time.UTC).Unix()); doubledTimeIndexed.ValueIndex(index).(float64) != 4.0 {
 		t.Errorf("Expected value at index 2018-01-02 to be 4.0, got %v", doubledTimeIndexed.ValueIndex(index))
 	}
 
 	// Test that the Copy function works.
-	index := time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+	index := UnixTime(time.Date(2018, 1, 1, 0, 0, 0, 0, time.UTC).Unix())
 	doubledTimeIndexed.SetValueIndex(index, 100.0)
 	if timeIndexed.ValueIndex(index).(float64) != 1.0 {
 		t.Errorf("Expected value at index 2018-01-01 to be 1.0, got %v", timeIndexed.ValueIndex(index))
-	}
-}
-
-func TestSeriesEURUSD(t *testing.T) {
-	data, err := EURUSD()
-	if err != nil {
-		t.Fatalf("Expected no error, got %s", err)
-	}
-
-	dates, closes := data.Dates(), data.Closes()
-
-	if dates.Len() != 2610 {
-		t.Fatalf("Expected 2610 rows, got %d", dates.Len())
-	}
-	if closes.Len() != 2610 {
-		t.Fatalf("Expected 2610 rows, got %d", closes.Len())
-	}
-
-	sma10 := closes.Rolling(10).Mean()
-	if sma10.Len() != 2610 {
-		t.Fatalf("Expected 2610 rows, got %d", sma10.Len())
-	}
-	if !EqualApprox(sma10.Value(-1).(float64), 1.15878) { // Latest closing price averaged over 10 periods.
-		t.Fatalf("Expected 1.10039, got %f", sma10.Value(-1))
 	}
 }

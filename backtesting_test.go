@@ -1,42 +1,49 @@
 package autotrader
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
 
-const testDataCSV = `date,open,high,low,close,volume
-2022-01-01,1.1,1.2,1.0,1.15,100
-2022-01-02,1.15,1.2,1.1,1.2,110
-2022-01-03,1.2,1.3,1.15,1.25,120
-2022-01-04,1.25,1.3,1.0,1.1,130
-2022-01-05,1.1,1.2,1.0,1.15,110
-2022-01-06,1.15,1.2,1.1,1.2,120
-2022-01-07,1.2,1.3,1.15,1.25,140
-2022-01-08,1.25,1.3,1.0,1.1,150
-2022-01-09,1.1,1.4,1.0,1.3,220`
-
-func newTestingDataframe() *Frame {
-	data, err := DataFrameFromCSVReaderLayout(strings.NewReader(testDataCSV), DataCSVLayout{
-		LatestFirst: false,
-		DateFormat:  "2006-01-02",
-		Date:        "date",
-		Open:        "open",
-		High:        "high",
-		Low:         "low",
-		Close:       "close",
-		Volume:      "volume",
-	})
-	if err != nil {
-		panic(err)
+var testData = func() *IndexedFrame[UnixTime] {
+	type candlestick struct {
+		Date   time.Time
+		Open   float64
+		High   float64
+		Low    float64
+		Close  float64
+		Volume float64
 	}
-	return data
-}
+	candlesticks := []candlestick{
+		{time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC), 1.1, 1.2, 1.0, 1.15, 100},
+		{time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC), 1.15, 1.2, 1.1, 1.2, 110},
+		{time.Date(2022, 1, 3, 0, 0, 0, 0, time.UTC), 1.2, 1.3, 1.15, 1.25, 120},
+		{time.Date(2022, 1, 4, 0, 0, 0, 0, time.UTC), 1.25, 1.3, 1.0, 1.1, 130},
+		{time.Date(2022, 1, 5, 0, 0, 0, 0, time.UTC), 1.1, 1.2, 1.0, 1.15, 110},
+		{time.Date(2022, 1, 6, 0, 0, 0, 0, time.UTC), 1.15, 1.2, 1.1, 1.2, 120},
+		{time.Date(2022, 1, 7, 0, 0, 0, 0, time.UTC), 1.2, 1.3, 1.15, 1.25, 140},
+		{time.Date(2022, 1, 8, 0, 0, 0, 0, time.UTC), 1.25, 1.3, 1.0, 1.1, 150},
+		{time.Date(2022, 1, 9, 0, 0, 0, 0, time.UTC), 1.1, 1.4, 1.0, 1.3, 160},
+	}
+	frame := NewIndexedFrame(
+		NewIndexedSeries[UnixTime, any]("Open", nil),
+		NewIndexedSeries[UnixTime, any]("High", nil),
+		NewIndexedSeries[UnixTime, any]("Low", nil),
+		NewIndexedSeries[UnixTime, any]("Close", nil),
+		NewIndexedSeries[UnixTime, any]("Volume", nil),
+	)
+	for _, c := range candlesticks {
+		frame.Series("Open").Insert(UnixTime(c.Date.Unix()), c.Open)
+		frame.Series("High").Insert(UnixTime(c.Date.Unix()), c.High)
+		frame.Series("Low").Insert(UnixTime(c.Date.Unix()), c.Low)
+		frame.Series("Close").Insert(UnixTime(c.Date.Unix()), c.Close)
+		frame.Series("Volume").Insert(UnixTime(c.Date.Unix()), c.Volume)
+	}
+	return frame
+}()
 
 func TestBacktestingBrokerCandles(t *testing.T) {
-	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 0, 0, 0, 0)
+	broker := NewTestBroker(nil, testData, 0, 0, 0, 0)
 
 	candles, err := broker.Candles("EUR_USD", "D", 3)
 	if err != nil {
@@ -45,8 +52,9 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 	if candles.Len() != 1 {
 		t.Errorf("Expected 1 candle, got %d", candles.Len())
 	}
-	if candles.Date(0) != time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC) {
-		t.Errorf("Expected first candle to be 2022-01-01, got %s", candles.Date(0))
+	expected := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+	if !candles.Date(0).Time().Equal(expected) {
+		t.Errorf("Expected first candle to be %s, got %s", expected, candles.Date(0))
 	}
 
 	broker.Advance()
@@ -57,11 +65,12 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 	if candles.Len() != 2 {
 		t.Errorf("Expected 2 candles, got %d", candles.Len())
 	}
-	if candles.Date(1) != time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC) {
-		t.Errorf("Expected second candle to be 2022-01-02, got %s", candles.Date(1))
+	expected = time.Date(2022, 1, 2, 0, 0, 0, 0, time.UTC)
+	if !candles.Date(1).Time().Equal(expected) {
+		t.Errorf("Expected second candle to be %s, got %s", expected, candles.Date(1))
 	}
 
-	for i := 0; i < 7; i++ { // 6 because we want to call broker.Candles 9 times total
+	for i := 0; i < 7; i++ { // 6 because we want to call broker.Advance() 9 times total
 		broker.Advance()
 		candles, err = broker.Candles("EUR_USD", "D", 5)
 		if err != nil && err != ErrEOF && i != 6 { // Allow ErrEOF on last iteration.
@@ -80,8 +89,7 @@ func TestBacktestingBrokerCandles(t *testing.T) {
 }
 
 func TestBacktestingBrokerMarketOrders(t *testing.T) {
-	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker := NewTestBroker(nil, testData, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
 	timeBeforeOrder := time.Now()
@@ -174,8 +182,7 @@ func TestBacktestingBrokerMarketOrders(t *testing.T) {
 }
 
 func TestBacktestingBrokerLimitOrders(t *testing.T) {
-	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker := NewTestBroker(nil, testData, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
 	order, err := broker.Order(Limit, "EUR_USD", -50_000, 1.3, 1.35, 1.1) // Sell limit 50,000 USD for 1000 EUR
@@ -224,8 +231,7 @@ func TestBacktestingBrokerLimitOrders(t *testing.T) {
 }
 
 func TestBacktestingBrokerStopOrders(t *testing.T) {
-	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker := NewTestBroker(nil, testData, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
 	order, err := broker.Order(Stop, "EUR_USD", 50_000, 1.2, 1, 1.3) // Buy stop 50,000 EUR for 1000 USD
@@ -273,8 +279,7 @@ func TestBacktestingBrokerStopOrders(t *testing.T) {
 }
 
 func TestBacktestingBrokerStopLossTakeProfit(t *testing.T) {
-	data := newTestingDataframe()
-	broker := NewTestBroker(nil, data, 100_000, 50, 0, 0)
+	broker := NewTestBroker(nil, testData, 100_000, 50, 0, 0)
 	broker.Slippage = 0
 
 	order, err := broker.Order(Market, "", 10_000, 0, 1.05, 1.25)
