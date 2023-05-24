@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,23 @@ func Backtest(trader *Trader) {
 		stats := trader.Stats()
 		// log.Println(trader.Stats().Dated.String())
 
+		var totalTraded float64
+		stats.Dated.Series("Trades").ForEach(func(i int, val any) {
+			if val == nil {
+				return
+			}
+			switch typ := val.(type) {
+			case []TradeStat:
+				for _, trade := range typ {
+					if trade.Exit { // Only count entry trades.
+						continue
+					}
+					totalTraded += trade.Price * math.Abs(trade.Units)
+				}
+			default:
+				panic("unknown type when calculating totalTraded")
+			}
+		})
 		// Divide net profit by maximum drawdown to get the profit factor.
 		var maxDrawdown float64
 		stats.Dated.Series("Drawdown").ForEach(func(i int, val any) {
@@ -59,6 +77,7 @@ func Backtest(trader *Trader) {
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 			fmt.Fprintln(w)
 			fmt.Fprintf(w, "Timespan:\t%s\t\n", stats.Dated.Date(-1).Sub(stats.Dated.Date(0)).Round(time.Second))
+			fmt.Fprintf(w, "Total Traded:\t$%.2f\t\n", totalTraded)
 			fmt.Fprintf(w, "Net Profit:\t$%.2f (%.2f%%)\t\n", profit, 100*profit/stats.Dated.Float("Equity", 0))
 			fmt.Fprintf(w, "Profit Factor:\t%.2f\t\n", profitFactor)
 			fmt.Fprintf(w, "Max Drawdown:\t$%.2f (%.2f%%)\t\n", maxDrawdown, maxDrawdownPct)
@@ -600,7 +619,7 @@ func (p *TestPosition) close(atPrice float64, closeType OrderCloseType) {
 	p.closePrice = atPrice
 	p.closeType = closeType
 	p.broker.Cash += p.Value() // Return the value of the position to the broker.
-	p.broker.spreadCollectedUSD += p.broker.Spread * p.units
+	p.broker.spreadCollectedUSD += p.broker.Spread * math.Abs(p.units) * p.closePrice
 	p.broker.SignalEmit("PositionClosed", p)
 }
 

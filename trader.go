@@ -33,6 +33,7 @@ func (t *Trader) Data() *IndexedFrame[UnixTime] {
 }
 
 type TradeStat struct {
+	Price float64 // Price is the price at which the trade was executed. If Exit is true, this is the exit price. Otherwise, this is the entry price.
 	Units float64 // Units is the signed number of units bought or sold.
 	Exit  bool    // Exit is true if the trade was to exit a previous position.
 }
@@ -165,14 +166,18 @@ func (t *Trader) Buy(units, stopLoss, takeProfit float64) {
 	t.CloseOrdersAndPositions()
 	t.Log.Printf("Buy %v units", units)
 	t.Broker.Order(Market, t.Symbol, units, 0, stopLoss, takeProfit)
-	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{units, false})
+
+	tradeStat := TradeStat{t.Broker.Ask(t.Symbol), units, false}
+	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
 }
 
 func (t *Trader) Sell(units, stopLoss, takeProfit float64) {
 	t.CloseOrdersAndPositions()
 	t.Log.Printf("Sell %v units", units)
 	t.Broker.Order(Market, t.Symbol, -units, 0, stopLoss, takeProfit)
-	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{-units, false})
+
+	tradeStat := TradeStat{t.Broker.Bid(t.Symbol), units, false}
+	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
 }
 
 func (t *Trader) CloseOrdersAndPositions() {
@@ -186,7 +191,9 @@ func (t *Trader) CloseOrdersAndPositions() {
 		if position.Symbol() == t.Symbol {
 			t.Log.Printf("Closing position: %v units, $%.2f PL", position.Units(), position.PL())
 			position.Close()
-			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, TradeStat{position.Units(), true})
+
+			tradeStat := TradeStat{t.Broker.Price(t.Symbol, position.Units() < 0), position.Units(), true}
+			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
 		}
 	}
 }

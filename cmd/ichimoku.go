@@ -23,7 +23,7 @@ func (s *IchimokuStrategy) Next(t *auto.Trader) {
 	laggingTime := data.Date(-s.leadingPeriods - 1)
 
 	// Extract ichimoku elements
-	ichimoku := auto.Ichimoku(data, s.convPeriod, s.basePeriod, s.leadingPeriods, time.Minute*15)
+	ichimoku := auto.Ichimoku(data, s.convPeriod, s.basePeriod, s.leadingPeriods, time.Minute*1)
 	conv := ichimoku.Series("Conversion")
 	base := ichimoku.Series("Base")
 	leadA := ichimoku.Series("LeadingA")
@@ -91,7 +91,7 @@ func main() {
 		Broker:        auto.NewTestBroker(broker, nil, 10000, 50, 0.0002, 0),
 		Strategy:      &IchimokuStrategy{convPeriod: 9, basePeriod: 26, leadingPeriods: 52},
 		Symbol:        "EUR_USD",
-		Frequency:     "M15",
+		Frequency:     "M1", // If the frequency is changed, update the call to Ichimoku() above.
 		CandlesToKeep: 2500,
 	}))
 }
