@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -86,7 +87,12 @@ func (s *IchimokuStrategy) Next(t *auto.Trader) {
 }
 
 func main() {
-	broker := oanda.NewOandaBroker(os.Getenv("OANDA_TOKEN"), os.Getenv("OANDA_ACCOUNT_ID"), true)
+	broker, err := oanda.NewOandaBroker(os.Getenv("OANDA_TOKEN"), os.Getenv("OANDA_ACCOUNT_ID"), true)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
 	auto.Backtest(auto.NewTrader(auto.TraderConfig{
 		Broker:        auto.NewTestBroker(broker, nil, 10000, 50, 0.0002, 0),
 		Strategy:      &IchimokuStrategy{convPeriod: 9, basePeriod: 26, leadingPeriods: 52},

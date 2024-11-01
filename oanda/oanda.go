@@ -16,6 +16,8 @@ const (
 	TimeLayout       = time.RFC3339
 )
 
+var ErrInvalidCred = fmt.Errorf("invalid credentials, token or account ID is invalid")
+
 var _ auto.Broker = (*OandaBroker)(nil) // Compile-time interface check.
 
 type OandaBroker struct {
@@ -26,7 +28,11 @@ type OandaBroker struct {
 	baseUrl   string // Either oandaLiveURL or oandaPracticeURL.
 }
 
-func NewOandaBroker(token, accountID string, practice bool) *OandaBroker {
+func NewOandaBroker(token, accountID string, practice bool) (*OandaBroker, error) {
+	if token == "" || accountID == "" {
+		return nil, ErrInvalidCred
+	}
+
 	var baseUrl string
 	if practice {
 		baseUrl = oandaPracticeURL
@@ -39,7 +45,7 @@ func NewOandaBroker(token, accountID string, practice bool) *OandaBroker {
 		token:         token,
 		accountID:     accountID,
 		baseUrl:       baseUrl,
-	}
+	}, nil
 }
 
 // Price returns the ask price if wantToBuy is true and the bid price if wantToBuy is false.

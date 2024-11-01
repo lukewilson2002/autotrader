@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	auto "github.com/fivemoreminix/autotrader"
@@ -33,7 +34,11 @@ func main() {
 		panic(err)
 	}
 	*/
-	broker := oanda.NewOandaBroker(os.Getenv("OANDA_TOKEN"), os.Getenv("OANDA_ACCOUNT_ID"), true)
+	broker, err := oanda.NewOandaBroker(os.Getenv("OANDA_TOKEN"), os.Getenv("OANDA_ACCOUNT_ID"), true)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 
 	auto.Backtest(auto.NewTrader(auto.TraderConfig{
 		Broker:        auto.NewTestBroker(broker /* data, */, nil, 10000, 50, 0.0002, 0),
