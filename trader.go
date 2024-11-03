@@ -38,7 +38,7 @@ type TradeStat struct {
 	Exit  bool    // Exit is true if the trade was to exit a previous position.
 }
 
-// Performance (financial) reporting and statistics.
+// Financial performance reporting and statistics.
 type TraderStats struct {
 	Dated             *Frame
 	returnsThisCandle float64

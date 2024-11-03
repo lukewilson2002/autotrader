@@ -69,7 +69,7 @@ func Backtest(trader *Trader) {
 			}
 		})
 		profit := stats.Dated.Float("Profit", -1)
-		profitFactor := stats.Dated.Float("Profit", -1) / maxDrawdown
+		profitFactor := profit / maxDrawdown
 		maxDrawdownPct := 100 * maxDrawdown / stats.Dated.Float("Equity", 0)
 
 		// Print a summary of the statistics to the console.
