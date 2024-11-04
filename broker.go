@@ -12,14 +12,20 @@ const (
 	CloseStopLoss     OrderCloseType = "SL"
 	CloseTrailingStop OrderCloseType = "TS"
 	CloseTakeProfit   OrderCloseType = "TP"
+
+	OrderPlaced    = "OrderPlaced"
+	OrderCancelled = "OrderCancelled"
+	OrderFulfilled = "OrderFulfilled"
+
+	PositionClosed = "PositionClosed"
 )
 
 type OrderType string
 
 const (
-	Market OrderType = "MARKET" // Market means to buy or sell at the current market price, which may not be what you ask for.
+	Market OrderType = "MARKET" // Market means to buy or sell at the current market price, which may not always be what you expect.
 	Limit  OrderType = "LIMIT"  // Limit means to buy or sell at a specific price or better.
-	Stop   OrderType = "STOP"   // Stop means to buy or sell when the price reaches a specific price or worse.
+	Stop   OrderType = "STOP"   // Stop means to buy or sell when the price reaches a specific price or ASAP.
 )
 
 var (

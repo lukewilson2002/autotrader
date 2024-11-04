@@ -22,7 +22,7 @@ var (
 	ErrEOF            = errors.New("end of the input data")
 	ErrNoData         = errors.New("no data")
 	ErrPositionClosed = errors.New("position already closed")
-	ErrZeroUnits      = errors.New("no amount of units specifed")
+	ErrInvalidUnits   = errors.New("the units provided failed to meet the criteria")
 )
 
 var _ Broker = (*TestBroker)(nil) // Compile-time interface check.
@@ -452,14 +452,22 @@ func (b *TestBroker) Price(symbol string, wantToBuy bool) float64 {
 	return b.Bid(symbol)
 }
 
+func (b *TestBroker) lastClose() float64 {
+	if b.CandleIndex() < b.Data.Len() {
+		return b.Data.Close(b.CandleIndex())
+	} else {
+		return b.Data.Close(-1) // If we are at end of data, then grab the last candlestick
+	}
+}
+
 // Bid returns the price a seller receives for the current candle.
 func (b *TestBroker) Bid(_ string) float64 {
-	return b.Data.Close(b.CandleIndex())
+	return b.lastClose()
 }
 
 // Ask returns the price a buyer pays for the current candle.
 func (b *TestBroker) Ask(_ string) float64 {
-	return b.Data.Close(b.CandleIndex()) + b.Spread
+	return b.lastClose() + b.Spread
 }
 
 // Candles returns the last count candles for the given symbol and frequency. If count is greater than the number of candles, then a dataframe with zero rows is returned.
@@ -485,7 +493,7 @@ func (b *TestBroker) Candles(symbol string, frequency string, count int) (*Index
 
 func (b *TestBroker) Order(orderType OrderType, symbol string, units, price, stopLoss, takeProfit float64) (Order, error) {
 	if units == 0 {
-		return nil, ErrZeroUnits
+		return nil, ErrInvalidUnits
 	}
 	if b.Data == nil { // The DataBroker could have data but nobody has fetched it, yet.
 		if b.DataBroker == nil {
@@ -537,7 +545,7 @@ func (b *TestBroker) Order(orderType OrderType, symbol string, units, price, sto
 	}
 
 	b.orders = append(b.orders, order)
-	b.SignalEmit("OrderPlaced", order)
+	b.SignalEmit(OrderPlaced, order)
 
 	return order, nil
 }
@@ -598,16 +606,16 @@ type TestPosition struct {
 	id             string
 	leverage       float64
 	symbol         string
-	trailingSL     float64 // the price of the trailing stop loss as assigned by broker Tick().
-	trailingSLDist float64 // serves to calculate the trailing stop loss at the broker.
+	trailingSL     float64 // The price of the trailing stop loss as assigned by broker Tick().
+	trailingSLDist float64 // Serves to calculate the trailing stop loss at the broker.
 	stopLoss       float64
 	takeProfit     float64
 	time           time.Time
-	units          float64
+	units          float64 // Is negative if this is a short position or positive for long.
 }
 
 func (p *TestPosition) Close() error {
-	p.close(p.broker.Price("", p.units < 0), CloseMarket)
+	p.close(p.broker.Price(p.symbol, p.units < 0), CloseMarket)
 	return nil
 }
 
@@ -620,7 +628,7 @@ func (p *TestPosition) close(atPrice float64, closeType OrderCloseType) {
 	p.closeType = closeType
 	p.broker.Cash += p.Value() // Return the value of the position to the broker.
 	p.broker.spreadCollectedUSD += p.broker.Spread * math.Abs(p.units) * p.closePrice
-	p.broker.SignalEmit("PositionClosed", p)
+	p.broker.SignalEmit(PositionClosed, p)
 }
 
 func (p *TestPosition) Closed() bool {
@@ -707,7 +715,7 @@ func (o *TestOrder) Cancel() error {
 
 func (o *TestOrder) fulfill(atPrice float64) {
 	slippage := rand.Float64() * o.broker.Slippage * atPrice
-	atPrice += slippage - slippage/2 // Adjust price as +/- 50% of the slippage.
+	atPrice += slippage / 2 // Adjust price as +/- 50% of the slippage.
 
 	o.position = &TestPosition{
 		broker:     o.broker,
@@ -725,9 +733,11 @@ func (o *TestOrder) fulfill(atPrice float64) {
 	} else {
 		o.position.stopLoss = o.stopLoss
 	}
+	// TODO: cash should be a function because position values change over time and you will pay for losses in realtime
 	o.broker.Cash -= o.position.EntryValue()
 
 	o.broker.positions = append(o.broker.positions, o.position)
+	o.broker.SignalEmit(OrderFulfilled, o)
 }
 
 func (o *TestOrder) Fulfilled() bool {

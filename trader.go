@@ -100,8 +100,15 @@ func (t *Trader) Init() {
 		NewSeries("Trades"), // []float64 representing the number of units traded positive for buy, negative for sell.
 	)
 	t.stats.tradesThisCandle = make([]TradeStat, 0, 2)
+	t.Broker.SignalConnect(OrderFulfilled, t, func(a ...any) {
+		order := a[0].(Order)
+		tradeStat := TradeStat{order.Position().EntryPrice(), order.Units(), false}
+		t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
+	})
 	t.Broker.SignalConnect("PositionClosed", t, func(args ...any) {
 		position := args[0].(Position)
+		tradeStat := TradeStat{position.ClosePrice(), position.Units(), true}
+		t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
 		t.stats.returnsThisCandle += position.PL()
 	})
 }
@@ -162,22 +169,38 @@ func (t *Trader) fetchData() {
 	}
 }
 
-func (t *Trader) Buy(units, stopLoss, takeProfit float64) {
-	t.CloseOrdersAndPositions()
-	t.Log.Printf("Buy %v units", units)
-	t.Broker.Order(Market, t.Symbol, units, 0, stopLoss, takeProfit)
+func (t *Trader) Order(orderType OrderType, units, price, stopLoss, takeProfit float64) (Order, error) {
+	var priceStr string
+	if orderType != Market { // Price is ignored on market orders.
+		priceStr = fmt.Sprintf(" @ $%.2f", price)
+	} else {
+		priceStr = fmt.Sprintf(" @ ~$%.2f", t.Broker.Price(t.Symbol, units > 0))
+	}
+	t.Log.Printf("%v %v units%v, stopLoss: %v, takeProfit: %v", orderType, units, priceStr, stopLoss, takeProfit)
 
-	tradeStat := TradeStat{t.Broker.Ask(t.Symbol), units, false}
-	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
+	order, err := t.Broker.Order(orderType, t.Symbol, units, price, stopLoss, takeProfit)
+	if err != nil {
+		return order, err
+	}
+
+	// NOTE: Trade stats get added by handling an event by the broker
+	return order, nil
 }
 
-func (t *Trader) Sell(units, stopLoss, takeProfit float64) {
-	t.CloseOrdersAndPositions()
-	t.Log.Printf("Sell %v units", units)
-	t.Broker.Order(Market, t.Symbol, -units, 0, stopLoss, takeProfit)
+// Buy creates a buy market order. Units must be greater than zero or ErrInvalidUnits is returned.
+func (t *Trader) Buy(units, stopLoss, takeProfit float64) (Order, error) {
+	if units <= 0 {
+		return nil, ErrInvalidUnits
+	}
+	return t.Order(Market, units, 0, stopLoss, takeProfit)
+}
 
-	tradeStat := TradeStat{t.Broker.Bid(t.Symbol), units, false}
-	t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
+// Sell creates a sell market order. Units must be greater than zero or ErrInvalidUnits is returned.
+func (t *Trader) Sell(units, stopLoss, takeProfit float64) (Order, error) {
+	if units <= 0 {
+		return nil, ErrInvalidUnits
+	}
+	return t.Order(Market, -units, 0, stopLoss, takeProfit)
 }
 
 func (t *Trader) CloseOrdersAndPositions() {
@@ -189,18 +212,15 @@ func (t *Trader) CloseOrdersAndPositions() {
 	}
 	for _, position := range t.Broker.OpenPositions() {
 		if position.Symbol() == t.Symbol {
-			t.Log.Printf("Closing position: %v units, $%.2f PL", position.Units(), position.PL())
-			position.Close()
-
-			tradeStat := TradeStat{t.Broker.Price(t.Symbol, position.Units() < 0), position.Units(), true}
-			t.stats.tradesThisCandle = append(t.stats.tradesThisCandle, tradeStat)
+			t.Log.Printf("Closing position: %v units, $%.2f PL, ($%.2f -> $%.2f)", position.Units(), position.PL(), position.EntryPrice(), position.ClosePrice())
+			position.Close() // Event gets handled in the Init function
 		}
 	}
 }
 
 func (t *Trader) IsLong() bool {
 	positions := t.Broker.OpenPositions()
-	if len(positions) <= 0 {
+	if len(positions) < 1 {
 		return false
 	} else if len(positions) > 1 {
 		panic("cannot call IsLong with hedging enabled")
@@ -210,7 +230,7 @@ func (t *Trader) IsLong() bool {
 
 func (t *Trader) IsShort() bool {
 	positions := t.Broker.OpenPositions()
-	if len(positions) <= 0 {
+	if len(positions) < 1 {
 		return false
 	} else if len(positions) > 1 {
 		panic("cannot call IsShort with hedging enabled")
